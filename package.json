@@ -1,0 +1,44 @@
+{
+  "name": "documentation-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A local MCP server for version-aware library and framework documentation.",
+  "type": "module",
+  "bin": {
+    "documentation-mcp": "dist/main.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "dev": "tsx watch src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "inspector": "npm run build && mcp-inspector node dist/main.js",
+    "test": "npm run build && node --test test/*.test.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ClearStoneDestiny/documentation-MCP.git"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "2.3.1",
+    "@nestjs/common": "12.2.0",
+    "@nestjs/core": "12.2.0",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "2.3.1",
+    "@modelcontextprotocol/inspector": "2.12.0",
+    "@types/node": "22.20.5",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2"
+  }
+}

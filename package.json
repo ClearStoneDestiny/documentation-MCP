@@ -20,7 +20,7 @@
     "dev": "tsx watch src/main.ts",
     "typecheck": "tsc --noEmit",
     "inspector": "npm run build && mcp-inspector node dist/main.js",
-    "test": "npm run build && node --test test/*.test.mjs"
+    "test": "npm run build && vitest run"
   },
   "repository": {
     "type": "git",
@@ -39,6 +39,7 @@
     "@modelcontextprotocol/inspector": "2.12.0",
     "@types/node": "22.20.5",
     "tsx": "4.23.15",
-    "typescript": "7.0.2"
+    "typescript": "7.0.2",
+    "vitest": "5.0.5"
   }
 }

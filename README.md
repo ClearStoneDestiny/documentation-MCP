@@ -22,7 +22,7 @@ The server waits for MCP messages on stdin. It does not start an HTTP listener. 
 ```sh
 npm run dev        # Run TypeScript with automatic restart
 npm run typecheck  # Check TypeScript types
-npm test          # Build and check the stdio protocol and shutdown
+npm test          # Build and run stdio protocol and shutdown tests
 npm run inspector # Build and open MCP Inspector
 ```
 
@@ -58,6 +58,6 @@ test/
   stdio.test.mjs      # Process-level protocol checks
 ```
 
-Runtime dependencies are Nest.js, MCP Server SDK, Zod, reflect-metadata, and RxJS. TypeScript, tsx, Node.js types, MCP Client SDK, and MCP Inspector are development dependencies. Exact versions are recorded in `package.json` and `package-lock.json`.
+Runtime dependencies are Nest.js, MCP Server SDK, Zod, reflect-metadata, and RxJS. TypeScript, tsx, Vitest, Node.js types, MCP Client SDK, and MCP Inspector are development dependencies. Exact versions are recorded in `package.json` and `package-lock.json`.
 
 The npm package is private while the initial implementation and release setup are being prepared.

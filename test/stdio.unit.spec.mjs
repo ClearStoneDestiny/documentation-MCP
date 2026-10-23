@@ -1,10 +1,9 @@
-import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import test from 'node:test';
+import { expect, test } from 'vitest';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 
@@ -15,7 +14,7 @@ for (const [name, mode] of [
   ['legacy initialization', 'legacy'],
   ['modern discovery', { pin: '2026-07-28' }],
 ]) {
-  test(`stdio supports ${name} and tool calls`, { timeout: 10_000 }, async (t) => {
+  test(`stdio supports ${name} and tool calls`, { timeout: 10_000 }, async ({ onTestFinished }) => {
     const transport = new StdioClientTransport({
       command: process.execPath,
       args: [serverPath],
@@ -28,29 +27,31 @@ for (const [name, mode] of [
       { name: 'documentation-mcp-smoke-test', version: '1.0.0' },
       { versionNegotiation: { mode } },
     );
-    t.after(() => client.close());
+    onTestFinished(() => client.close());
 
     const errors = [];
     client.onerror = (error) => errors.push(error);
     await client.connect(transport, { timeout: 5_000 });
 
     const { tools } = await client.listTools();
-    assert.ok(tools.some((tool) => tool.name === 'get_server_info'));
+    expect(tools).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'get_server_info' }),
+    ]));
 
     const result = await client.callTool({ name: 'get_server_info', arguments: {} });
-    assert.notEqual(result.isError, true);
-    assert.deepEqual(result.structuredContent, {
+    expect(result.isError).not.toBe(true);
+    expect(result.structuredContent).toEqual({
       name: packageInfo.name,
       version: packageInfo.version,
       stage: 'scaffold',
     });
-    assert.deepEqual(errors, [], 'stdout must contain only valid MCP messages');
+    expect(errors, 'stdout must contain only valid MCP messages').toEqual([]);
   });
 }
 
-test('exits cleanly when stdin closes and keeps startup logs off stdout', { timeout: 5_000 }, async (t) => {
+test('exits cleanly when stdin closes and keeps startup logs off stdout', { timeout: 5_000 }, async ({ onTestFinished }) => {
   const child = spawn(process.execPath, [serverPath], { stdio: 'pipe' });
-  t.after(() => {
+  onTestFinished(() => {
     if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
   });
   let stdout = '';
@@ -62,8 +63,8 @@ test('exits cleanly when stdin closes and keeps startup logs off stdout', { time
   child.stdin.end();
   const [code, signal] = await closed;
 
-  assert.equal(code, 0, stderr);
-  assert.equal(signal, null);
-  assert.equal(stdout, '');
-  assert.match(stderr, /Starting Nest application/);
+  expect(code, stderr).toBe(0);
+  expect(signal).toBeNull();
+  expect(stdout).toBe('');
+  expect(stderr).toMatch(/Starting Nest application/);
 });

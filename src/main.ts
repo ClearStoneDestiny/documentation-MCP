@@ -10,7 +10,6 @@ function reportError(error: unknown): void {
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.createApplicationContext(AppModule, {
-    // stdout belongs exclusively to the MCP transport.
     logger: {
       log: console.error,
       error: console.error,

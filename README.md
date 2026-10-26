@@ -2,7 +2,7 @@
 
 A local, stdio-based MCP server for official, version-aware library and framework documentation.
 
-The project currently contains Nest.js standalone, the official MCP TypeScript SDK v2, a `get_server_info` tool for checking connectivity, a Next.js source adapter, and a Markdown document parser. The adapter discovers documentation pages through the official `llms.txt` catalog and loads individual pages as raw Markdown. The parser extracts document metadata, sections, and code examples. Documentation retrieval through MCP tools, search, caching, version selection, resources, and prompts are planned but not implemented yet.
+The project currently exposes `get_server_info` and `get_documentation` over stdio using Nest.js standalone and the official MCP TypeScript SDK v2. Documentation retrieval combines a Next.js source adapter with a Markdown parser, returning current official pages or selected sections. Search, caching, version selection, resources, and prompts are planned but not implemented yet.
 
 ## Requirements
 
@@ -53,7 +53,10 @@ src/
   app.module.ts       # Root Nest module
   modules/
     documentation/
-      documentation.module.ts # Exports the Markdown document parser
+      documentation.module.ts # Imports sources and exports documentation providers
+      documentation.service.ts # Fetch, parse, select, and paginate documentation
+      schemas/                 # Shared get_documentation input/output contracts
+      errors/                  # Recoverable documentation errors
       interfaces/              # Parsed document, sections, examples, and source ranges
       parsers/
         markdown-document.parser.ts # CommonMark and YAML frontmatter parsing
@@ -61,6 +64,8 @@ src/
     mcp/
       mcp.module.ts     # MCP providers
       mcp.service.ts    # Server factory and stdio lifecycle
+      tools/
+        get-documentation.tool.ts # MCP registration and result/error mapping
       tests/
         stdio.unit.spec.mjs # Process-level protocol checks
     sources/
@@ -76,6 +81,46 @@ src/
 ```
 
 The Next.js adapter accepts a path relative to `/docs`, for example `app/getting-started/caching`. It fetches the official `.md` URL with a 10-second timeout and supports caller cancellation. Returned documents retain the original Markdown, canonical page URL, and fetch time. Current documentation URLs are mutable; `fetchedAt` is a retrieval timestamp, not a framework version or immutable source revision. Unit tests use mocked HTTP responses and do not need network access.
+
+## get_documentation
+
+Example tool arguments:
+
+```json
+{
+  "library": "nextjs",
+  "path": "app/getting-started/caching",
+  "section_id": "usage",
+  "max_chars": 12000
+}
+```
+
+| Parameter | Meaning |
+| --- | --- |
+| `library` | Required; currently only `nextjs` is supported. |
+| `path` | Required; page path relative to `/docs`, without a URL or `.md` suffix. |
+| `section_id` | Optional ID from the response's `sections` outline. Returns the section and all its subsections. The synthetic Introduction returns only its own preamble. |
+| `max_chars` | Markdown size limit, from 256 to 40,000; defaults to 12,000. Metadata and the section outline are additional. |
+| `offset` | Offset within the selected content; defaults to 0. Continue with the returned `pagination.nextOffset`. |
+| `expected_hash` | Previous `contentHash`; required for nonzero offsets. A source change returns `DOCUMENT_CHANGED` rather than mixing revisions. |
+
+The response contains source metadata, document title and optional description/update date, `channel: "current"`, a SHA-256 `contentHash`, a compact document-wide section outline, selected Markdown in `content`, and pagination information. Omit `section_id` to read the whole source document, including frontmatter, and discover section IDs. Section IDs are internal selectors, not verified website anchors. Historical version arguments and other unknown parameters are rejected.
+
+If `pagination.truncated` is true, repeat the call with the same `library`, `path`, and `section_id`, set `offset` to `pagination.nextOffset`, and set `expected_hash` to `contentHash`. Concatenating the content pages reconstructs the selection. Offsets and limits use JavaScript string units; surrogate pairs are kept intact. A response can end inside a code fence, so reassemble content before treating examples as complete. Each call currently fetches the page again; the content hash detects changes but does not provide a cached snapshot.
+
+Operational failures return MCP `isError: true` with a JSON text block containing `code` and `message`. Codes include `SOURCE_ERROR`, `PARSE_ERROR`, `SECTION_NOT_FOUND`, `DOCUMENT_CHANGED`, and `INVALID_REQUEST`. SDK input-validation failures also return `isError: true`, with the SDK's validation message. The service honors request cancellation and the source adapter's timeout. The tool is read-only and accesses the network.
+
+After building, test the tool with the locally installed Inspector:
+
+```sh
+node_modules/.bin/mcp-inspector --cli node dist/main.js \
+  --method tools/call --tool-name get_documentation \
+  --tool-arg library=nextjs \
+  --tool-arg path=app/getting-started/caching \
+  --tool-arg section_id=usage
+```
+
+`get_server_info` reports `stage: "documentation"`. Module dependencies are `McpModule → DocumentationModule → SourcesModule`; startup does not fetch documentation. Automated tests exercise the service, MCP SDK tool calls with mocked HTTP, and stdio discovery with both legacy and current protocol clients.
 
 ## Next.js catalog
 

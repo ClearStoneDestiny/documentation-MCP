@@ -7,9 +7,11 @@ import { expect, test } from "vitest";
 import { Client } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 
-const serverPath = fileURLToPath(new URL("../dist/main.js", import.meta.url));
+const serverPath = fileURLToPath(
+  new URL("../../../../dist/main.js", import.meta.url),
+);
 const packageInfo = JSON.parse(
-  readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+  readFileSync(new URL("../../../../package.json", import.meta.url), "utf8"),
 );
 
 for (const [name, mode] of [

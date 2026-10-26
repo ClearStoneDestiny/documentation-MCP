@@ -2,7 +2,7 @@
 
 A local, stdio-based MCP server for official, version-aware library and framework documentation.
 
-The project currently exposes `get_server_info` and `get_documentation` over stdio using Nest.js standalone and the official MCP TypeScript SDK v2. Documentation retrieval combines a Next.js source adapter, a persistent disk cache with update checks, and a Markdown parser. It returns current official pages or selected sections with freshness metadata. Search, version selection, resources, and prompts are planned but not implemented yet.
+The project currently exposes `get_server_info`, `search_docs`, and `get_documentation` over stdio using Nest.js standalone and the official MCP TypeScript SDK v2. A Next.js source adapter, persistent disk cache, Markdown parser, and section index support searching current official documentation and retrieving matching sections with freshness metadata. Version selection, recursive catalog discovery, resources, and prompts are planned but not implemented yet.
 
 ## Requirements
 
@@ -22,7 +22,7 @@ The server waits for MCP messages on stdin. It does not start an HTTP listener. 
 ```sh
 npm run dev        # Run TypeScript with automatic restart
 npm run typecheck  # Check TypeScript types
-npm test          # Build and run cache, parser, adapter, and MCP tests with Vitest
+npm test          # Build and run cache, parser, adapter, search, and MCP tests with Vitest
 npm run inspector # Build and open MCP Inspector
 ```
 
@@ -54,7 +54,7 @@ src/
   modules/
     cache/
       cache.module.ts          # Cache configuration and disk storage provider
-      cache.config.ts          # Cache directory, TTL, and enabled flag
+      utils/                   # Environment configuration and content hashing
       file-cache.service.ts    # Validated reads and atomic JSON writes
       schemas/                 # Versioned storage records and response metadata
       tests/                   # Disk persistence and corruption checks
@@ -72,8 +72,16 @@ src/
       mcp.service.ts    # Server factory and stdio lifecycle
       tools/
         get-documentation.tool.ts # MCP registration and result/error mapping
+        search-docs.tool.ts       # Search registration and indexing progress
       tests/
         stdio.unit.spec.mjs # Process-level protocol checks
+    search/
+      search.module.ts  # Source adapter and parser dependencies
+      search.service.ts # Synchronize cached pages, update changed sections, report coverage
+      section-index.ts  # Inverted index and weighted BM25 ranking
+      schemas/          # search_docs input/output contracts
+      utils/            # API-aware tokenization and bounded snippets
+      tests/            # Ranking, updates, failures, scope, and cancellation
     sources/
       sources.module.ts # Source adapter providers
       interfaces/       # Adapter, catalog, page reference, and raw document contracts
@@ -129,7 +137,57 @@ node_modules/.bin/mcp-inspector --cli node dist/main.js \
   --tool-arg section_id=usage
 ```
 
-`get_server_info` reports `stage: "documentation"`. Module dependencies are `McpModule → DocumentationModule → SourcesModule → CacheModule`; startup does not fetch documentation or create cache files. Automated tests exercise the cache, service, MCP SDK tool calls with mocked HTTP, and stdio discovery with both legacy and current protocol clients.
+`get_server_info` reports `stage: "search"`. `McpModule` imports `DocumentationModule` and `SearchModule`; both use the source adapter and existing cache. Startup does not fetch documentation, build an index, or create cache files. Automated tests exercise the cache, parser, search, MCP SDK tool calls with mocked HTTP, and stdio discovery with both legacy and current protocol clients.
+
+## search_docs
+
+Example tool arguments:
+
+```json
+{
+  "library": "nextjs",
+  "query": "revalidateTag",
+  "path_prefix": "app/api-reference/functions",
+  "limit": 5
+}
+```
+
+| Parameter | Meaning |
+| --- | --- |
+| `library` | Required; currently `nextjs`. |
+| `query` | Required lexical keywords, 1–256 characters. Use the documentation's language (usually English) and API names, e.g. `caching revalidation` or `unstable_cache`. Whitespace, punctuation-only queries, and queries containing only common stop words are rejected. |
+| `path_prefix` | Optional exact page or subtree relative to `/docs`, without a trailing slash. `app/guides/data` selects that page and its descendants, but not `app/guides/database`. Restricts downloads as well as results. |
+| `limit` | 1–20 matching sections; defaults to 5. |
+| `refresh` | Defaults to `false`. Check the catalog and every page in the selected scope now, bypassing TTL. |
+
+The first search loads the catalog and downloads the pages in scope, using at most four concurrent page requests. Omitting `path_prefix` selects every page directly listed in the root catalog and can take longer than a client's default tool timeout. Start with a narrower prefix when appropriate, or configure a longer timeout in your MCP client. When a client requests MCP progress, the tool reports completed page attempts, including failures. Clients that support resetting timeouts on progress can enable that behavior. Request cancellation stops active fetches and prevents new page downloads; concurrent searches synchronize in order, and cancellation also works while waiting.
+
+The process keeps an inverted index of parsed sections in memory. Every search loads its selected pages through the existing cache policy, so fresh saved pages require no HTTP. Content hashes determine which pages need parsing and reindexing. Changed pages replace their old section postings; pages removed from the catalog or failing to load/parse are excluded. Restarting rebuilds the index from cached Markdown on demand. The derived index is not persisted separately. Disabling the disk cache makes each search download its scope again.
+
+Ranking uses BM25 over weighted fields: section title (6), document title (3), ancestor headings (2), path and section body (1). The body includes code examples. Tokenization normalizes Unicode and case, preserves full API identifiers, and also indexes camelCase and snake_case parts. Matches use any query term, with a query-coverage multiplier favoring sections matching more terms. Common English query stop words are ignored. Scores are relative to the selected corpus and are not confidence probabilities; ties use path and source order. This is lexical search without stemming, semantic translation, or historical comparisons. An agent answering a Russian question should formulate technical search keywords in the source language.
+
+Each result includes `path`, the canonical `sourceUrl`, document and section titles, `sectionId`, `headingPath`, one-based inclusive line numbers for the section's own source range, a bounded Markdown snippet (up to 482 JavaScript string units including ellipses), `score`, `matchedTerms`, `contentHash`, `fetchedAt`, and cache metadata. Snippets are excerpts for discovery and can cut across code fences. No website anchors are synthesized from internal section IDs.
+
+Pass a result's `getDocumentation` object directly as the arguments to `get_documentation`. It contains `library`, `path`, `section_id`, and `expected_hash`. Retrieval includes the selected section's descendants; a changed document returns `DOCUMENT_CHANGED`, so search again before retrying. `totalMatches` counts matching sections before `limit` is applied; multiple results can belong to one page.
+
+Inspect `coverage` even when results are empty:
+
+- `scope: "root-catalog"`, `catalogUrl`, optional source-declared `docVersion`, and optional `pathPrefix` describe discovery scope. Nested indexes such as `/docs/pages/llms.txt` are not expanded; this is not full Next.js documentation coverage.
+- `catalogDocuments`, `selectedDocuments`, `indexedDocuments`, and `indexedSections` report how much was searched. A prefix with no catalog entries succeeds with zero selected documents.
+- `partial`, `failedDocuments`, and `failures` report unavailable or unparseable pages. Failure details include path and code, are sorted and capped at 20, and expose `failuresTruncated` when needed. Failed pages are retried on subsequent calls through the cache policy.
+- `staleDocuments`, `catalogCache`, and each result's `cache` expose saved copies whose source could not be checked. `partial` refers to failed indexing, independently of stale content.
+
+A catalog failure returns MCP `isError: true` with `SOURCE_ERROR`. If every selected page fails, the tool returns `INDEX_UNAVAILABLE`. Available pages remain searchable when only some pages fail. Input validation and cancellation follow the same conventions as `get_documentation`.
+
+After building, try a single-page search in Inspector:
+
+```sh
+node_modules/.bin/mcp-inspector --cli node dist/main.js \
+  --method tools/call --tool-name search_docs \
+  --tool-arg library=nextjs \
+  --tool-arg query=revalidation \
+  --tool-arg path_prefix=app/getting-started/caching
+```
 
 ## Disk cache and update checks
 

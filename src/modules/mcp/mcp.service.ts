@@ -12,6 +12,7 @@ import {
 } from "@modelcontextprotocol/server/stdio";
 import * as z from "zod/v4";
 import { GetDocumentationTool } from "./tools/get-documentation.tool.js";
+import { SearchDocsTool } from "./tools/search-docs.tool.js";
 
 const packageInfo = JSON.parse(
   readFileSync(new URL("../../../package.json", import.meta.url), "utf8"),
@@ -24,6 +25,8 @@ export class McpService implements OnModuleInit, OnModuleDestroy {
   constructor(
     @Inject(GetDocumentationTool)
     private readonly getDocumentationTool: GetDocumentationTool,
+    @Inject(SearchDocsTool)
+    private readonly searchDocsTool: SearchDocsTool,
   ) {}
 
   onModuleInit(): void {
@@ -52,7 +55,7 @@ export class McpService implements OnModuleInit, OnModuleDestroy {
         outputSchema: z.object({
           name: z.string(),
           version: z.string(),
-          stage: z.literal("documentation"),
+          stage: z.literal("search"),
         }),
         annotations: {
           readOnlyHint: true,
@@ -65,7 +68,7 @@ export class McpService implements OnModuleInit, OnModuleDestroy {
         const info = {
           name: packageInfo.name,
           version: packageInfo.version,
-          stage: "documentation" as const,
+          stage: "search" as const,
         };
 
         return {
@@ -76,6 +79,7 @@ export class McpService implements OnModuleInit, OnModuleDestroy {
     );
 
     this.getDocumentationTool.register(server);
+    this.searchDocsTool.register(server);
     return server;
   }
 }

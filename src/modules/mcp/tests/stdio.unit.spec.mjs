@@ -45,6 +45,7 @@ for (const [name, mode] of [
         expect.arrayContaining([
           expect.objectContaining({ name: "get_server_info" }),
           expect.objectContaining({ name: "get_documentation" }),
+          expect.objectContaining({ name: "search_docs" }),
         ]),
       );
 
@@ -57,7 +58,7 @@ for (const [name, mode] of [
       expect(result.structuredContent).toEqual({
         name: packageInfo.name,
         version: packageInfo.version,
-        stage: "documentation",
+        stage: "search",
       });
       expect(errors, "stdout must contain only valid MCP messages").toEqual([]);
 
@@ -66,6 +67,11 @@ for (const [name, mode] of [
         arguments: { library: "react", path: "app/guides/example" },
       });
       expect(invalid.isError).toBe(true);
+      const invalidSearch = await client.callTool({
+        name: "search_docs",
+        arguments: { library: "react", query: "caching" },
+      });
+      expect(invalidSearch.isError).toBe(true);
     },
   );
 }

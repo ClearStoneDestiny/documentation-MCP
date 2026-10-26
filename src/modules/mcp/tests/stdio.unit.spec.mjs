@@ -44,6 +44,7 @@ for (const [name, mode] of [
       expect(tools).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ name: "get_server_info" }),
+          expect.objectContaining({ name: "get_documentation" }),
         ]),
       );
 
@@ -56,9 +57,15 @@ for (const [name, mode] of [
       expect(result.structuredContent).toEqual({
         name: packageInfo.name,
         version: packageInfo.version,
-        stage: "scaffold",
+        stage: "documentation",
       });
       expect(errors, "stdout must contain only valid MCP messages").toEqual([]);
+
+      const invalid = await client.callTool({
+        name: "get_documentation",
+        arguments: { library: "react", path: "app/guides/example" },
+      });
+      expect(invalid.isError).toBe(true);
     },
   );
 }

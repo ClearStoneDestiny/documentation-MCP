@@ -1,21 +1,35 @@
-import { readFileSync } from 'node:fs';
-import { Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
-import { McpServer } from '@modelcontextprotocol/server';
-import { serveStdio, type StdioServerHandle } from '@modelcontextprotocol/server/stdio';
-import * as z from 'zod/v4';
+import { readFileSync } from "node:fs";
+import {
+  Inject,
+  Injectable,
+  type OnModuleDestroy,
+  type OnModuleInit,
+} from "@nestjs/common";
+import { McpServer } from "@modelcontextprotocol/server";
+import {
+  serveStdio,
+  type StdioServerHandle,
+} from "@modelcontextprotocol/server/stdio";
+import * as z from "zod/v4";
+import { GetDocumentationTool } from "./tools/get-documentation.tool.js";
 
 const packageInfo = JSON.parse(
-  readFileSync(new URL('../../../package.json', import.meta.url), 'utf8'),
+  readFileSync(new URL("../../../package.json", import.meta.url), "utf8"),
 ) as { name: string; version: string };
 
 @Injectable()
 export class McpService implements OnModuleInit, OnModuleDestroy {
   private handle?: StdioServerHandle;
 
+  constructor(
+    @Inject(GetDocumentationTool)
+    private readonly getDocumentationTool: GetDocumentationTool,
+  ) {}
+
   onModuleInit(): void {
-    // The factory supports both modern MCP clients and legacy initialize handshakes.
+    // The factory supports both modern MCP clients and legacy initialize handshakes
     this.handle = serveStdio(() => this.createServer(), {
-      onerror: (error) => console.error('[MCP]', error),
+      onerror: (error) => console.error("[MCP]", error),
     });
   }
 
@@ -30,14 +44,15 @@ export class McpService implements OnModuleInit, OnModuleDestroy {
     });
 
     server.registerTool(
-      'get_server_info',
+      "get_server_info",
       {
-        description: 'Get server information and the current implementation stage. Documentation retrieval is not implemented yet',
+        description:
+          "Get server information and the current implementation stage.",
         inputSchema: z.object({}),
         outputSchema: z.object({
           name: z.string(),
           version: z.string(),
-          stage: z.literal('scaffold'),
+          stage: z.literal("documentation"),
         }),
         annotations: {
           readOnlyHint: true,
@@ -50,16 +65,17 @@ export class McpService implements OnModuleInit, OnModuleDestroy {
         const info = {
           name: packageInfo.name,
           version: packageInfo.version,
-          stage: 'scaffold' as const,
+          stage: "documentation" as const,
         };
 
         return {
-          content: [{ type: 'text', text: JSON.stringify(info) }],
+          content: [{ type: "text", text: JSON.stringify(info) }],
           structuredContent: info,
         };
       },
     );
 
+    this.getDocumentationTool.register(server);
     return server;
   }
 }

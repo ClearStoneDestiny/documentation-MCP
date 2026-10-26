@@ -1,0 +1,206 @@
+import { readFileSync } from "node:fs";
+import { afterEach, expect, onTestFinished, test, vi } from "vitest";
+import { Client } from "@modelcontextprotocol/client";
+import { InMemoryTransport, McpServer } from "@modelcontextprotocol/server";
+import { DocumentationService } from "../../../../dist/modules/documentation/documentation.service.js";
+import { MarkdownDocumentParser } from "../../../../dist/modules/documentation/parsers/markdown-document.parser.js";
+import { NextjsAdapter } from "../../../../dist/modules/sources/adapters/nextjs.adapter.js";
+import { GetDocumentationTool } from "../../../../dist/modules/mcp/tools/get-documentation.tool.js";
+
+const fixture = readFileSync(
+  new URL("../../documentation/tests/fixtures/document.md", import.meta.url),
+  "utf8",
+);
+const request = { library: "nextjs", path: "app/guides/example" };
+
+afterEach(() => vi.unstubAllGlobals());
+
+async function connect() {
+  const service = new DocumentationService(
+    new NextjsAdapter(),
+    new MarkdownDocumentParser(),
+  );
+  const server = new McpServer({
+    name: "documentation-test",
+    version: "1.0.0",
+  });
+
+  new GetDocumentationTool(service).register(server);
+
+  const client = new Client({ name: "test-client", version: "1.0.0" });
+  onTestFinished(async () => {
+    await client.close();
+    await server.close();
+  });
+  const [clientTransport, serverTransport] =
+    InMemoryTransport.createLinkedPair();
+
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  return client;
+}
+
+function mockMarkdown(content = fixture) {
+  const fetchMock = vi.fn(
+    async () =>
+      new Response(content, { headers: { "Content-Type": "text/markdown" } }),
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
+test("serves structured documentation and matching text through the MCP SDK", async (context) => {
+  const fetchMock = mockMarkdown();
+  const client = await connect();
+  const { tools } = await client.listTools();
+
+  expect(tools[0]).toMatchObject({
+    name: "get_documentation",
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  });
+  expect(tools[0].outputSchema).toBeDefined();
+
+  const schema = tools[0].outputSchema;
+
+  expect(schema.properties.selectedSectionId).toMatchObject({
+    anyOf: [{ type: "string" }, { type: "null" }],
+  });
+  expect(schema.properties.selectedSectionId.type).toBeUndefined();
+
+  expect(schema.required).toContain("selectedSectionId");
+  const pagination = schema.properties.pagination;
+
+  expect(pagination.properties.nextOffset).toMatchObject({
+    anyOf: [{ type: "integer" }, { type: "null" }],
+  });
+  expect(pagination.properties.nextOffset.type).toBeUndefined();
+  expect(pagination.required).toContain("nextOffset");
+
+  const result = await client.callTool({
+    name: "get_documentation",
+    arguments: request,
+  });
+
+  expect(result.isError).not.toBe(true);
+  expect(result.structuredContent).toMatchObject({
+    title: "Example Guide",
+    content: fixture,
+    channel: "current",
+    selectedSectionId: null,
+    pagination: { nextOffset: null },
+  });
+  expect(JSON.parse(result.content[0].text)).toEqual(result.structuredContent);
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+});
+
+test("supports section selection and continuation through real tools/call messages", async (context) => {
+  mockMarkdown();
+
+  const client = await connect();
+  const args = {
+    ...request,
+    section_id: "setup-cache-with-links",
+    max_chars: 256,
+  };
+
+  const first = (
+    await client.callTool({ name: "get_documentation", arguments: args })
+  ).structuredContent;
+  const second = (
+    await client.callTool({
+      name: "get_documentation",
+      arguments: {
+        ...args,
+        offset: first.pagination.nextOffset,
+        expected_hash: first.contentHash,
+      },
+    })
+  ).structuredContent;
+
+  expect(first.pagination.truncated).toBe(true);
+  expect(first.content + second.content).toBe(
+    fixture.slice(fixture.indexOf("## Setup"), fixture.indexOf("## Usage")),
+  );
+});
+
+test("returns isError for a missing section without presenting an empty success", async (context) => {
+  mockMarkdown();
+
+  const client = await connect();
+  const result = await client.callTool({
+    name: "get_documentation",
+    arguments: { ...request, section_id: "missing" },
+  });
+
+  expect(result.isError).toBe(true);
+  expect(JSON.parse(result.content[0].text)).toMatchObject({
+    code: "SECTION_NOT_FOUND",
+  });
+});
+
+test.each([{ path: "../secret" }, { version: "14" }, { offset: 1 }])(
+  "validates tool input before making HTTP requests: %j",
+  async (invalid) => {
+    const fetchMock = mockMarkdown();
+
+    const client = await connect();
+    const result = await client.callTool({
+      name: "get_documentation",
+      arguments: { ...request, ...invalid },
+    });
+
+    expect(result.isError).toBe(true);
+    expect(fetchMock).not.toHaveBeenCalled();
+  },
+);
+
+test("returns source errors as failed tool results", async (context) => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => new Response("Unavailable", { status: 503 })),
+  );
+
+  const client = await connect();
+  const result = await client.callTool({
+    name: "get_documentation",
+    arguments: request,
+  });
+
+  expect(result.isError).toBe(true);
+  expect(JSON.parse(result.content[0].text)).toMatchObject({
+    code: "SOURCE_ERROR",
+  });
+});
+
+test("propagates MCP cancellation to the source request", async () => {
+  let markStarted;
+  const started = new Promise((resolve) => {
+    markStarted = resolve;
+  });
+
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((_url, { signal }) => {
+      markStarted(signal);
+      return new Promise((_resolve, reject) => {
+        signal.addEventListener("abort", () => reject(signal.reason), {
+          once: true,
+        });
+      });
+    }),
+  );
+
+  const client = await connect();
+  const controller = new AbortController();
+  const pending = client.callTool(
+    { name: "get_documentation", arguments: request },
+    { signal: controller.signal },
+  );
+
+  const assertion = expect(pending).rejects.toThrow();
+  const sourceSignal = await started;
+  controller.abort(new Error("Stop documentation request"));
+
+  await assertion;
+  await vi.waitFor(() => expect(sourceSignal.aborted).toBe(true));
+});

@@ -2,7 +2,7 @@
 
 A local, stdio-based MCP server for official, version-aware library and framework documentation.
 
-The project currently contains Nest.js standalone, the official MCP TypeScript SDK v2, a `get_server_info` tool for checking connectivity, and a Next.js source adapter. The adapter discovers documentation pages through the official `llms.txt` catalog and loads individual pages as raw Markdown. The adapter is not exposed through MCP tools yet. Document content parsing, search, caching, version selection, resources, and prompts are planned but not implemented yet.
+The project currently contains Nest.js standalone, the official MCP TypeScript SDK v2, a `get_server_info` tool for checking connectivity, a Next.js source adapter, and a Markdown document parser. The adapter discovers documentation pages through the official `llms.txt` catalog and loads individual pages as raw Markdown. The parser extracts document metadata, sections, and code examples. Documentation retrieval through MCP tools, search, caching, version selection, resources, and prompts are planned but not implemented yet.
 
 ## Requirements
 
@@ -22,7 +22,7 @@ The server waits for MCP messages on stdin. It does not start an HTTP listener. 
 ```sh
 npm run dev        # Run TypeScript with automatic restart
 npm run typecheck  # Check TypeScript types
-npm test          # Build and run adapter and stdio tests with Vitest
+npm test          # Build and run parser, adapter, and stdio tests with Vitest
 npm run inspector # Build and open MCP Inspector
 ```
 
@@ -52,6 +52,12 @@ src/
   main.ts             # Standalone bootstrap, stderr logging, shutdown
   app.module.ts       # Root Nest module
   modules/
+    documentation/
+      documentation.module.ts # Exports the Markdown document parser
+      interfaces/              # Parsed document, sections, examples, and source ranges
+      parsers/
+        markdown-document.parser.ts # CommonMark and YAML frontmatter parsing
+      tests/                   # Parser checks and a local Markdown fixture
     mcp/
       mcp.module.ts     # MCP providers
       mcp.service.ts    # Server factory and stdio lifecycle
@@ -62,7 +68,8 @@ src/
       interfaces/       # Adapter, catalog, page reference, and raw document contracts
       adapters/
         nextjs.adapter.ts # Fetch the Next.js catalog and individual Markdown pages
-        nextjs.constants.ts # Shared source URLs and supported path format
+      constants/
+        nextjs.constant.ts # Shared source URLs and supported path format
       parsers/
         nextjs-catalog.parser.ts # Parse the Next.js llms.txt link list
       tests/            # Adapter and catalog parser tests with local fixtures
@@ -95,6 +102,27 @@ Fetching the catalog does not download document contents. Source adapters perfor
 
 Discovery currently covers pages directly listed by the root index. Links to sub-indexes such as `/docs/pages/llms.txt` are excluded from document entries; recursive catalog discovery is a separate follow-up.
 
-Runtime dependencies are Nest.js, MCP Server SDK, Zod, reflect-metadata, and RxJS. TypeScript, tsx, Vitest, Node.js types, MCP Client SDK, and MCP Inspector are development dependencies. Exact versions are recorded in `package.json` and `package-lock.json`.
+## Markdown document parsing
+
+`MarkdownDocumentParser.parse(source)` accepts an `ISourceDocument` and returns an `IParsedDocument`. The original Markdown and source metadata are preserved. Parsing is local and performs no network requests.
+
+```js
+import { NextjsAdapter } from "./dist/modules/sources/adapters/nextjs.adapter.js";
+import { MarkdownDocumentParser } from "./dist/modules/documentation/parsers/markdown-document.parser.js";
+
+const source = await new NextjsAdapter().fetchDocument("app/getting-started/caching");
+const document = new MarkdownDocumentParser().parse(source);
+const examples = document.sections.flatMap((section) => section.codeExamples);
+```
+
+- Metadata: YAML `title`, `description`, and `lastUpdated` are extracted and validated. The title falls back to the first H1, then the first heading, then the source path. Invalid YAML or invalid known metadata fields raise an error; source URLs are taken from the adapter, not from frontmatter.
+- Sections: top-level Markdown headings form a flat list in source order. Each section contains its heading and the content up to the next heading. `parentId` and `headingPath` preserve nesting without repeating child content inside parents. Content before the first heading becomes an `Introduction` section with depth 0. YAML frontmatter is excluded from sections.
+- IDs: section IDs and code IDs are document-local and deterministic for unchanged content. Section IDs use unique heading slugs; they are internal selectors, not verified website anchors.
+- Code: fenced, tilde-fenced, and indented blocks, including blocks inside lists or quotations, are attached to their containing section. Each example records parsed `code`, optional `language` and original fence `meta`, plus a verbatim `markdown` excerpt. Parsed code follows CommonMark normalization; the excerpt retains original source characters and line endings.
+- Ranges: sections and examples include one-based inclusive `startLine`/`endLine` and JavaScript string `startOffset`/`endOffset` (end exclusive). Their source excerpts can be recovered by slicing the original document with these offsets.
+
+The parser uses remark for CommonMark structure, remark-frontmatter and YAML for metadata, and github-slugger for section IDs. HTML and MDX-looking markup are retained as source data; components and code examples are not evaluated. A dedicated MDX grammar is outside this parser's current scope.
+
+Runtime dependencies include Nest.js, MCP Server SDK, Zod, reflect-metadata, RxJS, and the Markdown parsing libraries. TypeScript, tsx, Vitest, Node.js and Markdown AST types, MCP Client SDK, and MCP Inspector are development dependencies. Exact versions are recorded in `package.json` and `package-lock.json`.
 
 The npm package is private while the initial implementation and release setup are being prepared.

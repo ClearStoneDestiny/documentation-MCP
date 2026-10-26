@@ -5,7 +5,7 @@ import { serveStdio, type StdioServerHandle } from '@modelcontextprotocol/server
 import * as z from 'zod/v4';
 
 const packageInfo = JSON.parse(
-  readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
+  readFileSync(new URL('../../../package.json', import.meta.url), 'utf8'),
 ) as { name: string; version: string };
 
 @Injectable()
@@ -32,7 +32,7 @@ export class McpService implements OnModuleInit, OnModuleDestroy {
     server.registerTool(
       'get_server_info',
       {
-        description: 'Get server information and the current implementation stage. Documentation retrieval is not implemented yet.',
+        description: 'Get server information and the current implementation stage. Documentation retrieval is not implemented yet',
         inputSchema: z.object({}),
         outputSchema: z.object({
           name: z.string(),

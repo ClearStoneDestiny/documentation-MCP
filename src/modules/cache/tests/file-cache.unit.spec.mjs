@@ -9,11 +9,9 @@ import {
   test,
   vi,
 } from "vitest";
-import {
-  contentHash,
-  FileCacheService,
-} from "../../../../dist/modules/cache/file-cache.service.js";
-import { readCacheOptions } from "../../../../dist/modules/cache/cache.config.js";
+import { FileCacheService } from "../../../../dist/modules/cache/file-cache.service.js";
+import { contentHash } from "../../../../dist/modules/cache/utils/content-hash.util.js";
+import { readCacheOptions } from "../../../../dist/modules/cache/utils/read-cache-options.util.js";
 
 beforeEach(() => vi.spyOn(console, "error").mockImplementation(() => {}));
 afterEach(() => {

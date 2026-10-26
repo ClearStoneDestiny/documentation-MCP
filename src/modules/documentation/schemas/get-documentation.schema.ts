@@ -1,5 +1,6 @@
 import * as z from "zod/v4";
 import { NEXTJS_DOCUMENT_PATH_PATTERN } from "../../sources/constants/nextjs.constant.js";
+import { cacheInfoSchema } from "../../cache/schemas/cache.schema.js";
 
 export const getDocumentationInputSchema = z
   .strictObject({
@@ -44,6 +45,12 @@ export const getDocumentationInputSchema = z
       .describe(
         "Previous contentHash. Required when offset > 0 to detect source changes.",
       ),
+    refresh: z
+      .boolean()
+      .default(false)
+      .describe(
+        "Check the source now, even if the disk cache is fresh. Temporary failures may return a saved copy marked stale.",
+      ),
   })
   .refine((input) => input.offset === 0 || input.expected_hash !== undefined, {
     path: ["expected_hash"],
@@ -58,6 +65,7 @@ export const getDocumentationOutputSchema = z.object({
   description: z.string().optional(),
   lastUpdated: z.string().optional(),
   fetchedAt: z.string(),
+  cache: cacheInfoSchema.optional(),
   channel: z.literal("current"),
   contentHash: z.string(),
   // Branch descriptions prevent Zod from collapsing nullable unions into type arrays

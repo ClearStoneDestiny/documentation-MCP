@@ -1,4 +1,7 @@
 import { readFileSync } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 import { Client } from "@modelcontextprotocol/client";
 import { InMemoryTransport, McpServer } from "@modelcontextprotocol/server";
@@ -6,6 +9,8 @@ import { DocumentationService } from "../../../../dist/modules/documentation/doc
 import { MarkdownDocumentParser } from "../../../../dist/modules/documentation/parsers/markdown-document.parser.js";
 import { NextjsAdapter } from "../../../../dist/modules/sources/adapters/nextjs.adapter.js";
 import { GetDocumentationTool } from "../../../../dist/modules/mcp/tools/get-documentation.tool.js";
+import { FileCacheService } from "../../../../dist/modules/cache/file-cache.service.js";
+import { CachedMarkdownService } from "../../../../dist/modules/sources/services/cached-markdown.service.js";
 
 const fixture = readFileSync(
   new URL("../../documentation/tests/fixtures/document.md", import.meta.url),
@@ -15,9 +20,12 @@ const request = { library: "nextjs", path: "app/guides/example" };
 
 afterEach(() => vi.unstubAllGlobals());
 
-async function connect() {
+async function connect(
+  cacheOptions = { directory: process.cwd(), ttlMs: 0, enabled: false },
+) {
+  const store = new FileCacheService(cacheOptions);
   const service = new DocumentationService(
-    new NextjsAdapter(),
+    new NextjsAdapter(new CachedMarkdownService(store)),
     new MarkdownDocumentParser(),
   );
   const server = new McpServer({
@@ -203,4 +211,108 @@ test("propagates MCP cancellation to the source request", async () => {
 
   await assertion;
   await vi.waitFor(() => expect(sourceSignal.aborted).toBe(true));
+});
+
+async function persistentCache(ttlMs = 3_600_000) {
+  const directory = await mkdtemp(
+    join(tmpdir(), "documentation-mcp-tool-cache-"),
+  );
+  onTestFinished(() => rm(directory, { recursive: true, force: true }));
+  return { directory, ttlMs, enabled: true };
+}
+
+test("reuses disk content across MCP clients and revalidates on refresh", async () => {
+  const options = await persistentCache();
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValueOnce(
+      new Response(fixture, {
+        headers: { "Content-Type": "text/markdown", ETag: '"v1"' },
+      }),
+    )
+    .mockResolvedValueOnce(new Response(null, { status: 304 }));
+
+  vi.stubGlobal("fetch", fetchMock);
+
+  const client = await connect(options);
+  const first = (
+    await client.callTool({ name: "get_documentation", arguments: request })
+  ).structuredContent;
+
+  const secondClient = await connect(options);
+  const second = (
+    await secondClient.callTool({
+      name: "get_documentation",
+      arguments: request,
+    })
+  ).structuredContent;
+
+  expect(first.cache).toMatchObject({ status: "miss", persisted: true });
+  expect(second.cache.status).toBe("hit");
+  expect(second.contentHash).toBe(first.contentHash);
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+
+  const refreshed = (
+    await client.callTool({
+      name: "get_documentation",
+      arguments: { ...request, refresh: true },
+    })
+  ).structuredContent;
+  expect(refreshed.cache.status).toBe("revalidated");
+  expect(refreshed.fetchedAt).toBe(first.fetchedAt);
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+});
+
+test("reports changed content during a forced refresh and serves the updated saved page afterwards", async () => {
+  const fetchMock = mockMarkdown();
+  const client = await connect(await persistentCache());
+
+  const first = (
+    await client.callTool({ name: "get_documentation", arguments: request })
+  ).structuredContent;
+  fetchMock.mockImplementation(
+    async () =>
+      new Response(`${fixture}\nUpdated.`, {
+        headers: { "Content-Type": "text/markdown" },
+      }),
+  );
+
+  const mismatch = await client.callTool({
+    name: "get_documentation",
+    arguments: { ...request, refresh: true, expected_hash: first.contentHash },
+  });
+
+  expect(mismatch.isError).toBe(true);
+  expect(JSON.parse(mismatch.content[0].text).code).toBe("DOCUMENT_CHANGED");
+
+  const current = (
+    await client.callTool({ name: "get_documentation", arguments: request })
+  ).structuredContent;
+
+  expect(current.content).toContain("Updated.");
+  expect(current.cache.status).toBe("hit");
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+});
+
+test("marks the response stale when the source is temporarily offline", async () => {
+  const fetchMock = mockMarkdown();
+  const client = await connect(await persistentCache(0));
+
+  const first = (
+    await client.callTool({ name: "get_documentation", arguments: request })
+  ).structuredContent;
+  fetchMock.mockRejectedValue(new TypeError("Offline"));
+
+  const response = await client.callTool({
+    name: "get_documentation",
+    arguments: request,
+  });
+
+  expect(response.isError).not.toBe(true);
+  expect(response.structuredContent.contentHash).toBe(first.contentHash);
+  expect(response.structuredContent.cache).toMatchObject({
+    status: "stale",
+    checkedAt: first.cache.checkedAt,
+    warning: expect.any(String),
+  });
 });

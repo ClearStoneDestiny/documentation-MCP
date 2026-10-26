@@ -33,6 +33,7 @@ test("fetches and parses a page with metadata, an outline, and a complete Markdo
   expect(adapter.fetchDocument).toHaveBeenCalledExactlyOnceWith(
     request.path,
     undefined,
+    { refresh: false },
   );
   expect(result).toMatchObject({
     libraryId: "nextjs",
@@ -222,6 +223,7 @@ test("honors cancellation before a request and forwards the signal to the adapte
   expect(adapter.fetchDocument).toHaveBeenCalledWith(
     request.path,
     controller.signal,
+    { refresh: false },
   );
   adapter.fetchDocument.mockClear();
   const reason = new Error("Cancelled by caller");

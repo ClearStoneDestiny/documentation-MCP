@@ -33,7 +33,7 @@ export class DocumentationService {
     signal?.throwIfAborted();
 
     const source = await this.nextjs
-      .fetchDocument(request.path, signal)
+      .fetchDocument(request.path, signal, { refresh: request.refresh })
       .catch((cause: unknown) => {
         signal?.throwIfAborted();
 
@@ -126,6 +126,7 @@ export class DocumentationService {
       ...(document.description ? { description: document.description } : {}),
       ...(document.lastUpdated ? { lastUpdated: document.lastUpdated } : {}),
       fetchedAt: document.fetchedAt,
+      ...(document.cache ? { cache: document.cache } : {}),
       channel: "current",
       contentHash,
       selectedSectionId: request.section_id ?? null,

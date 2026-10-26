@@ -1,6 +1,17 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { NextjsAdapter } from "../../../../dist/modules/sources/adapters/nextjs.adapter.js";
+import { CachedMarkdownService } from "../../../../dist/modules/sources/services/cached-markdown.service.js";
+import { FileCacheService } from "../../../../dist/modules/cache/file-cache.service.js";
+
+function createAdapter() {
+  const store = new FileCacheService({
+    directory: process.cwd(),
+    ttlMs: 0,
+    enabled: false,
+  });
+  return new NextjsAdapter(new CachedMarkdownService(store));
+}
 
 const path = "app/getting-started/caching";
 const markdown =
@@ -24,7 +35,7 @@ test.each(["text/markdown; charset=utf-8", "text/plain"])(
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const document = await new NextjsAdapter().fetchDocument(path);
+    const document = await createAdapter().fetchDocument(path);
 
     expect(fetchMock.mock.calls[0][0]).toBe(
       "https://nextjs.org/docs/app/getting-started/caching.md",
@@ -36,6 +47,11 @@ test.each(["text/markdown; charset=utf-8", "text/plain"])(
       content: markdown,
       format: "markdown",
       fetchedAt: expect.any(String),
+      cache: {
+        status: "disabled",
+        checkedAt: expect.any(String),
+        persisted: false,
+      },
     });
     expect(Number.isNaN(Date.parse(document.fetchedAt))).toBe(false);
   },
@@ -53,9 +69,9 @@ test.each([
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(
-      new NextjsAdapter().fetchDocument(invalidPath),
-    ).rejects.toThrow("Invalid Next.js documentation path");
+    await expect(createAdapter().fetchDocument(invalidPath)).rejects.toThrow(
+      "Invalid Next.js documentation path",
+    );
     expect(fetchMock).not.toHaveBeenCalled();
   },
 );
@@ -68,7 +84,7 @@ test.each([404, 429, 503])(
       vi.fn().mockResolvedValue(new Response("Error", { status })),
     );
 
-    await expect(new NextjsAdapter().fetchDocument(path)).rejects.toThrow(
+    await expect(createAdapter().fetchDocument(path)).rejects.toThrow(
       `(${status})`,
     );
   },
@@ -84,7 +100,7 @@ test("rejects an HTML response instead of treating it as Markdown", async () => 
     ),
   );
 
-  await expect(new NextjsAdapter().fetchDocument(path)).rejects.toThrow(
+  await expect(createAdapter().fetchDocument(path)).rejects.toThrow(
     "Expected Markdown",
   );
 });
@@ -99,7 +115,7 @@ test("rejects an empty document", async () => {
     ),
   );
 
-  await expect(new NextjsAdapter().fetchDocument(path)).rejects.toThrow(
+  await expect(createAdapter().fetchDocument(path)).rejects.toThrow(
     "Empty Next.js documentation",
   );
 });
@@ -118,7 +134,7 @@ test("forwards caller cancellation to the request", async () => {
     ),
   );
 
-  const request = new NextjsAdapter().fetchDocument(path, controller.signal);
+  const request = createAdapter().fetchDocument(path, controller.signal);
   const assertion = expect(request).rejects.toThrow("Request cancelled");
   controller.abort(new Error("Request cancelled"));
 
@@ -140,7 +156,7 @@ test("fetches the catalog in one request and can load a discovered document", as
     );
   vi.stubGlobal("fetch", fetchMock);
 
-  const adapter = new NextjsAdapter();
+  const adapter = createAdapter();
   const catalog = await adapter.fetchCatalog();
 
   expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -176,7 +192,7 @@ test.each([
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const document = await new NextjsAdapter().fetchDocument(apiPath);
+    const document = await createAdapter().fetchDocument(apiPath);
 
     expect(document.path).toBe(apiPath);
     expect(fetchMock.mock.calls[0][0]).toBe(
@@ -223,7 +239,7 @@ test.each([
       ),
     );
 
-    await expect(new NextjsAdapter().fetchCatalog()).rejects.toThrow(error);
+    await expect(createAdapter().fetchCatalog()).rejects.toThrow(error);
   },
 );
 
@@ -241,7 +257,7 @@ test("forwards caller cancellation when fetching the catalog", async () => {
     ),
   );
 
-  const request = new NextjsAdapter().fetchCatalog(controller.signal);
+  const request = createAdapter().fetchCatalog(controller.signal);
   const assertion = expect(request).rejects.toThrow(
     "Catalog request cancelled",
   );

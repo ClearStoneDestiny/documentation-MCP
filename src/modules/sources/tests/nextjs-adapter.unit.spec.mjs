@@ -1,9 +1,14 @@
 import { afterEach, expect, test, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import { NextjsAdapter } from "../../../../dist/modules/sources/adapters/nextjs.adapter.js";
 
 const path = "app/getting-started/caching";
 const markdown =
   "# Example documentation\n\n## Example\n\n```ts\nconst value = 42;\n```\n";
+const catalogFixture = readFileSync(
+  new URL("./fixtures/nextjs-llms.txt", import.meta.url),
+  "utf8",
+);
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -116,6 +121,132 @@ test("forwards caller cancellation to the request", async () => {
   const request = new NextjsAdapter().fetchDocument(path, controller.signal);
   const assertion = expect(request).rejects.toThrow("Request cancelled");
   controller.abort(new Error("Request cancelled"));
+
+  await assertion;
+});
+
+test("fetches the catalog in one request and can load a discovered document", async () => {
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValueOnce(
+      new Response(catalogFixture, {
+        headers: { "Content-Type": "text/plain; charset=utf-8" },
+      }),
+    )
+    .mockResolvedValueOnce(
+      new Response(markdown, {
+        headers: { "Content-Type": "text/markdown" },
+      }),
+    );
+  vi.stubGlobal("fetch", fetchMock);
+
+  const adapter = new NextjsAdapter();
+  const catalog = await adapter.fetchCatalog();
+
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  expect(fetchMock.mock.calls[0][0]).toBe("https://nextjs.org/docs/llms.txt");
+  expect(catalog).toMatchObject({
+    libraryId: "nextjs",
+    sourceUrl: "https://nextjs.org/docs/llms.txt",
+    docVersion: "99.1.0",
+  });
+  expect(Number.isNaN(Date.parse(catalog.fetchedAt))).toBe(false);
+  expect(catalog.documents).toHaveLength(5);
+
+  const reference = catalog.documents.find(
+    (document) => document.title === "Caching",
+  );
+  const document = await adapter.fetchDocument(reference.path);
+
+  expect(fetchMock.mock.calls[1][0]).toBe(`${reference.sourceUrl}.md`);
+  expect(document.sourceUrl).toBe(reference.sourceUrl);
+  expect(document.content).toBe(markdown);
+});
+
+test.each([
+  "app/api-reference/functions/cacheLife",
+  "app/api-reference/functions/unstable_cache",
+])(
+  "accepts the official API path %s when fetching a document",
+  async (apiPath) => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(markdown, {
+        headers: { "Content-Type": "text/markdown" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const document = await new NextjsAdapter().fetchDocument(apiPath);
+
+    expect(document.path).toBe(apiPath);
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      `https://nextjs.org/docs/${apiPath}.md`,
+    );
+  },
+);
+
+test.each([
+  {
+    status: 503,
+    contentType: "text/plain",
+    body: "Unavailable",
+    error: "(503)",
+  },
+  {
+    status: 200,
+    contentType: "text/html",
+    body: "<html>Error</html>",
+    error: "Expected Markdown",
+  },
+  {
+    status: 200,
+    contentType: "text/plain",
+    body: " \n ",
+    error: "Empty Next.js documentation",
+  },
+  {
+    status: 200,
+    contentType: "text/plain",
+    body: "# No document links",
+    error: "No documentation entries found",
+  },
+])(
+  "rejects an unusable catalog: $error",
+  async ({ status, contentType, body, error }) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(body, {
+          status,
+          headers: { "Content-Type": contentType },
+        }),
+      ),
+    );
+
+    await expect(new NextjsAdapter().fetchCatalog()).rejects.toThrow(error);
+  },
+);
+
+test("forwards caller cancellation when fetching the catalog", async () => {
+  const controller = new AbortController();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      (_url, { signal }) =>
+        new Promise((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(signal.reason), {
+            once: true,
+          });
+        }),
+    ),
+  );
+
+  const request = new NextjsAdapter().fetchCatalog(controller.signal);
+  const assertion = expect(request).rejects.toThrow(
+    "Catalog request cancelled",
+  );
+
+  controller.abort(new Error("Catalog request cancelled"));
 
   await assertion;
 });

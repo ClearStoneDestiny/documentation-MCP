@@ -1,0 +1,14 @@
+# Next.js Documentation
+
+@doc-version: 99.1.0
+@doc-version-notes: Example metadata, not part of the version value.
+
+## [Guides](https://nextjs.org/docs/app/guides)
+
+- [Caching](https://nextjs.org/docs/app/guides/caching): Example guide: caching data.
+  - [Nested example](/docs/app/guides/nested/example): A nested catalog entry.
+- [No description](app/guides/no-description)
+
+## Pages Router
+
+- [Pages example](https://nextjs.org/docs/pages/guides/example): Example for another router.

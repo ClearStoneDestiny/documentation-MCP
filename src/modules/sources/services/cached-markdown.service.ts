@@ -175,7 +175,7 @@ export class CachedMarkdownService {
           ? error.transient
           : isTimeoutError || error instanceof TypeError;
 
-      if (cached && isTimeoutError && isTransientError) {
+      if (cached && isTransientError) {
         return this.result(
           cached,
           "stale",

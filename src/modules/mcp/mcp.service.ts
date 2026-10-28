@@ -13,6 +13,7 @@ import {
 import * as z from "zod/v4";
 import { GetDocumentationTool } from "./tools/get-documentation.tool.js";
 import { SearchDocsTool } from "./tools/search-docs.tool.js";
+import { ListVersionsTool } from "./tools/list-versions.tool.js";
 
 const packageInfo = JSON.parse(
   readFileSync(new URL("../../../package.json", import.meta.url), "utf8"),
@@ -27,6 +28,8 @@ export class McpService implements OnModuleInit, OnModuleDestroy {
     private readonly getDocumentationTool: GetDocumentationTool,
     @Inject(SearchDocsTool)
     private readonly searchDocsTool: SearchDocsTool,
+    @Inject(ListVersionsTool)
+    private readonly listVersionsTool: ListVersionsTool,
   ) {}
 
   onModuleInit(): void {
@@ -80,6 +83,7 @@ export class McpService implements OnModuleInit, OnModuleDestroy {
 
     this.getDocumentationTool.register(server);
     this.searchDocsTool.register(server);
+    this.listVersionsTool.register(server);
     return server;
   }
 }

@@ -1,0 +1,81 @@
+import { McpServer } from "@modelcontextprotocol/server";
+import { Inject, Injectable } from "@nestjs/common";
+import { VersionService } from "../../libraries/version.service.js";
+import {
+  listVersionsInputSchema,
+  listVersionsOutputSchema,
+} from "../../libraries/schemas/list-versions.schema.js";
+import { DocumentationError } from "../../documentation/errors/documentation.error.js";
+
+@Injectable()
+export class ListVersionsTool {
+  constructor(
+    @Inject(VersionService)
+    private readonly version: VersionService,
+  ) {}
+
+  register(server: McpServer): void {
+    server.registerTool(
+      "list_versions",
+      {
+        description:
+          "List documentation sets available through this server for a supported library. " +
+          "Currently, Next.js provides only the current documentation set. " +
+          "Returns the catalog-declared version when available; this is not an " +
+          "immutable documentation revision or a verified compatibility range. " +
+          "Uses a disk cache; refresh checks the catalog source immediately. " +
+          "Inspect catalog.cache when present: stale means the source could not " +
+          "be checked and a saved copy was returned. " +
+          "Does not list all package releases or provide historical documentation.",
+
+        inputSchema: listVersionsInputSchema,
+        outputSchema: listVersionsOutputSchema,
+        annotations: {
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: true,
+        },
+      },
+
+      async (input, context) => {
+        const signal = context.mcpReq.signal;
+
+        try {
+          const result = await this.version.listVersion(input, signal);
+
+          return {
+            content: [{ type: "text", text: JSON.stringify(result) }],
+            structuredContent: result,
+          };
+        } catch (error: any) {
+          signal.throwIfAborted();
+
+          if (!(error instanceof DocumentationError)) {
+            console.error("[list_versions]", error);
+          }
+
+          return {
+            isError: true,
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  code:
+                    error instanceof DocumentationError
+                      ? error.code
+                      : "INTERNAL_ERROR",
+
+                  message:
+                    error instanceof DocumentationError
+                      ? error.message
+                      : "Could not list documentation sets.",
+                }),
+              },
+            ],
+          };
+        }
+      },
+    );
+  }
+}

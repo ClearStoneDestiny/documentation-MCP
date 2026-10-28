@@ -121,7 +121,7 @@ test("rejects an empty document", async () => {
   );
 
   await expect(createAdapter().fetchDocument(path)).rejects.toThrow(
-    "Empty Next.js documentation",
+    "Empty documentation",
   );
 });
 
@@ -223,7 +223,7 @@ test.each([
     status: 200,
     contentType: "text/plain",
     body: " \n ",
-    error: "Empty Next.js documentation",
+    error: "Empty documentation",
   },
   {
     status: 200,

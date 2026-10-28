@@ -198,6 +198,62 @@ test("Nest registers a document-only adapter without promising catalog-dependent
   expect(fetch).not.toHaveBeenCalled();
 });
 
+test("Nest discovers documentation sets without requiring a catalog, parser, or document loader", async () => {
+  class SetsAdapter {
+    constructor(options) {
+      this.libraryId = options.id;
+    }
+
+    async listDocumentationSets() {
+      return {
+        documentationSets: [
+          {
+            id: "current",
+            label: "Live handbook",
+            channel: "current",
+            declaredVersion: null,
+            versionRange: null,
+            sourceUrl: "https://handbook.example/live/",
+          },
+        ],
+      };
+    }
+  }
+
+  Inject(LIBRARY_SOURCE_OPTIONS)(SetsAdapter, undefined, 0);
+
+  const app = await boot(
+    LibrarySourcesModule.register({
+      handbook: {
+        enabled: true,
+        name: "Handbook",
+        documentationUrl: "https://handbook.example/",
+        sources: {},
+        adapter: SetsAdapter,
+      },
+    }),
+  );
+
+  expect(
+    app.get(LibraryService).listLibraries({}).libraries[0].capabilities,
+  ).toEqual({
+    tools: ["list_versions"],
+    historicalDocumentation: false,
+  });
+
+  const result = await app
+    .get(VersionService)
+    .listVersion({ library: "handbook" });
+  expect(result.documentationSets[0]).toMatchObject({
+    id: "current",
+    label: "Live handbook",
+    declaredVersion: null,
+  });
+  
+  expect(result).not.toHaveProperty("catalog");
+  expect(fetch).not.toHaveBeenCalled();
+});
+
 test.each([{}, { nextjs: { ...LIBRARY_DEFINITIONS.nextjs, enabled: false } }])(
   "an empty enabled set boots all consumers and rejects requests without HTTP: %j",
   async (definitions) => {
@@ -259,6 +315,7 @@ test("configuration is snapshotted for a registration and changes apply to the n
   expect(registration.name).toBe("Next.js");
   expect(registration.adapter.options).toEqual({
     id: "nextjs",
+    name: "Next.js",
     documentationUrl: LIBRARY_DEFINITIONS.nextjs.documentationUrl,
     sources: LIBRARY_DEFINITIONS.nextjs.sources,
   });

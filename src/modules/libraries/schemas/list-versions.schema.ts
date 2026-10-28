@@ -1,7 +1,8 @@
 import * as z from "zod/v4";
 import { cacheInfoSchema } from "../../cache/schemas/cache.schema.js";
+import { LIBRARY_IDS } from "../constants/library.constant.js";
 
-export const libraryIdSchema = z.enum(["nextjs"]);
+export const libraryIdSchema = z.enum(LIBRARY_IDS);
 
 export const listVersionsInputSchema = z.strictObject({
   library: libraryIdSchema.describe(

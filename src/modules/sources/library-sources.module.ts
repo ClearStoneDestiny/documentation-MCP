@@ -39,6 +39,7 @@ class LibrarySourceModule {
           provide: LIBRARY_SOURCE_OPTIONS,
           useValue: Object.freeze({
             id,
+            name: definition.name,
             documentationUrl: definition.documentationUrl,
             sources: definition.sources,
           }),

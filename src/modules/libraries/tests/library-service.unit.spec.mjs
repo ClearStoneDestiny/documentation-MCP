@@ -20,6 +20,7 @@ const nextjsLibrary = {
 function setup() {
   const adapter = {
     libraryId: "nextjs",
+    isValidPath: vi.fn(() => true),
     fetchCatalog: vi.fn(),
     fetchDocument: vi.fn(),
   };

@@ -2,7 +2,7 @@ import { expect, test, vi } from "vitest";
 import { CodeExamplesService } from "../../../../dist/modules/code-examples/code-examples.service.js";
 import { getCodeExamplesOutputSchema } from "../../../../dist/modules/code-examples/schemas/get-code-examples.schema.js";
 import { MarkdownDocumentParser } from "../../../../dist/modules/documentation/parsers/markdown-document.parser.js";
-import { LibraryRegistry } from "../../../../dist/modules/libraries/library-registry.service.js";
+import { createRegistry } from "../../libraries/tests/fixtures/library.fixture.mjs";
 
 const request = { library: "nextjs", query: "revalidateTag" };
 const markdown = [
@@ -64,7 +64,7 @@ function setup(
     catalog,
     contents,
     service: new CodeExamplesService(
-      new LibraryRegistry(adapter),
+      createRegistry(adapter),
       new MarkdownDocumentParser(),
     ),
   };

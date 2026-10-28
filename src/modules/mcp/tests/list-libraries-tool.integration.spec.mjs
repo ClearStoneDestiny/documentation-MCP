@@ -10,11 +10,14 @@ import { Client } from "@modelcontextprotocol/client";
 import { InMemoryTransport, McpServer } from "@modelcontextprotocol/server";
 import { FileCacheService } from "../../../../dist/modules/cache/file-cache.service.js";
 import { DocumentationError } from "../../../../dist/modules/documentation/errors/documentation.error.js";
-import { LibraryRegistry } from "../../../../dist/modules/libraries/library-registry.service.js";
 import { LibraryService } from "../../../../dist/modules/libraries/library.service.js";
 import { ListLibrariesTool } from "../../../../dist/modules/mcp/tools/list-libraries.tool.js";
 import { NextjsAdapter } from "../../../../dist/modules/sources/adapters/nextjs.adapter.js";
 import { CachedMarkdownService } from "../../../../dist/modules/sources/services/cached-markdown.service.js";
+import {
+  createRegistry,
+  nextjsSourceOptions,
+} from "../../libraries/tests/fixtures/library.fixture.mjs";
 
 const nextjsLibrary = {
   id: "nextjs",
@@ -58,11 +61,12 @@ async function connect(service) {
         enabled: false,
       }),
     ),
+    nextjsSourceOptions,
   );
   const server = new McpServer({ name: "libraries-test", version: "1.0.0" });
 
   new ListLibrariesTool(
-    service ?? new LibraryService(new LibraryRegistry(adapter)),
+    service ?? new LibraryService(createRegistry(adapter)),
   ).register(server);
 
   const client = new Client({ name: "test-client", version: "1.0.0" });

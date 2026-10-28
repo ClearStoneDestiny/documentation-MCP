@@ -30,6 +30,7 @@ for (const [name, mode] of [
         stderr: "pipe",
       });
       transport.stderr?.resume();
+
       const client = new Client(
         { name: "documentation-mcp-smoke-test", version: "1.0.0" },
         { versionNegotiation: { mode } },
@@ -38,6 +39,7 @@ for (const [name, mode] of [
 
       const errors = [];
       client.onerror = (error) => errors.push(error);
+
       await client.connect(transport, { timeout: 5_000 });
 
       const { tools } = await client.listTools();
@@ -46,6 +48,7 @@ for (const [name, mode] of [
           expect.objectContaining({ name: "get_server_info" }),
           expect.objectContaining({ name: "get_documentation" }),
           expect.objectContaining({ name: "search_docs" }),
+          expect.objectContaining({ name: "list_versions" }),
         ]),
       );
 
@@ -67,11 +70,18 @@ for (const [name, mode] of [
         arguments: { library: "react", path: "app/guides/example" },
       });
       expect(invalid.isError).toBe(true);
+
       const invalidSearch = await client.callTool({
         name: "search_docs",
         arguments: { library: "react", query: "caching" },
       });
       expect(invalidSearch.isError).toBe(true);
+
+      const invalidVersions = await client.callTool({
+        name: "list_versions",
+        arguments: { library: "react" },
+      });
+      expect(invalidVersions.isError).toBe(true);
     },
   );
 }
@@ -81,6 +91,7 @@ test(
   { timeout: 5_000 },
   async ({ onTestFinished }) => {
     const child = spawn(process.execPath, [serverPath], { stdio: "pipe" });
+
     onTestFinished(() => {
       if (child.exitCode === null && child.signalCode === null)
         child.kill("SIGKILL");

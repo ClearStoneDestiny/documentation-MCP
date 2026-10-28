@@ -108,6 +108,33 @@ function fixture(id, options = {}) {
       };
     }),
 
+    listDocumentationSets: vi.fn(async function (signal, fetchOptions) {
+      const catalog = this.fetchCatalog
+        ? await this.fetchCatalog(signal, fetchOptions)
+        : undefined;
+
+      return {
+        documentationSets: [
+          {
+            id: "current",
+            label: `${id} live documentation`,
+            channel: "current",
+            declaredVersion: catalog?.docVersion ?? null,
+            versionRange: null,
+            sourceUrl: `https://${id}.example/`,
+          },
+        ],
+        ...(catalog
+          ? {
+              catalog: {
+                sourceUrl: catalog.sourceUrl,
+                fetchedAt: catalog.fetchedAt,
+              },
+            }
+          : {}),
+      };
+    }),
+
     // These unsupported promises must not affect the resolved operations
     historicalDocumentation: true,
     capabilities: { tools: allTools, historicalDocumentation: true },
@@ -115,6 +142,10 @@ function fixture(id, options = {}) {
 
   if (options.noCatalog) {
     delete adapter.fetchCatalog;
+  }
+
+  if (options.noSets) {
+    delete adapter.listDocumentationSets;
   }
 
   if (options.noDocuments) {
@@ -198,12 +229,24 @@ function counts(item) {
     item.adapter.fetchDocument,
     item.parse,
     item.createIndex,
+    item.adapter.listDocumentationSets,
   ].map((method) => method?.mock.calls.length ?? 0);
 }
 
 test.each([
   ["full", {}, allTools],
-  ["direct", { noCatalog: true }, ["get_documentation"]],
+  ["direct", { noCatalog: true, noSets: true }, ["get_documentation"]],
+  [
+    "direct-with-sets",
+    { noCatalog: true },
+    ["get_documentation", "list_versions"],
+  ],
+  ["catalog-without-sets", { noDocuments: true, noSets: true }, []],
+  [
+    "full-without-sets",
+    { noSets: true },
+    ["get_documentation", "search_docs", "get_code_examples"],
+  ],
   [
     "catalog",
     { noDocuments: true, noPathValidation: true, noFormat: true },
@@ -214,14 +257,15 @@ test.each([
   ["no-index", { noIndex: true }, ["get_documentation", "list_versions"]],
   ["no-format", { noFormat: true }, ["list_versions"]],
   ["no-path-validation", { noPathValidation: true }, ["list_versions"]],
-  ["no-operations", { noDocuments: true, noCatalog: true }, []],
+  ["sets-only", { noDocuments: true, noCatalog: true }, ["list_versions"]],
+  ["no-operations", { noDocuments: true, noCatalog: true, noSets: true }, []],
 ])(
   "%s advertises exactly the operations that its source and installed pipeline can execute",
   async (id, options, supported) => {
     const item = fixture(id, options);
     const { client } = await connect([item]);
 
-    expect(counts(item)).toEqual([0, 0, 0, 0, 0]);
+    expect(counts(item)).toEqual([0, 0, 0, 0, 0, 0]);
 
     const listed = await client.callTool({
       name: "list_libraries",
@@ -233,7 +277,7 @@ test.each([
       tools: supported,
       historicalDocumentation: false,
     });
-    expect(counts(item)).toEqual([0, 0, 0, 0, 0]);
+    expect(counts(item)).toEqual([0, 0, 0, 0, 0, 0]);
     expect(Object.isFrozen(item.registration.operations)).toBe(true);
 
     for (const [name, args] of calls) {
@@ -275,7 +319,7 @@ test.each([
 
 test("multiple libraries keep different capabilities within the same server", async () => {
   const full = fixture("full");
-  const direct = fixture("direct", { noCatalog: true });
+  const direct = fixture("direct", { noCatalog: true, noSets: true });
 
   const { client } = await connect([full, direct]);
   const listed = await client.callTool({
@@ -299,8 +343,8 @@ test("multiple libraries keep different capabilities within the same server", as
   });
 
   expect(JSON.parse(unsupported.content[0].text).code).toBe("TOOL_UNSUPPORTED");
-  expect(counts(full)).toEqual([0, 0, 0, 0, 0]);
-  expect(counts(direct)).toEqual([0, 0, 0, 0, 0]);
+  expect(counts(full)).toEqual([0, 0, 0, 0, 0, 0]);
+  expect(counts(direct)).toEqual([0, 0, 0, 0, 0, 0]);
 
   const supported = await client.callTool({
     name: "search_docs",
@@ -308,7 +352,7 @@ test("multiple libraries keep different capabilities within the same server", as
   });
 
   expect(supported.isError).not.toBe(true);
-  expect(counts(direct)).toEqual([0, 0, 0, 0, 0]);
+  expect(counts(direct)).toEqual([0, 0, 0, 0, 0, 0]);
 });
 
 test("temporary source failures preserve capabilities and remain SOURCE_ERROR rather than unsupported", async () => {
@@ -366,7 +410,7 @@ test("an adapter cannot enable historical routing through flags or catalog versi
 
   expect(result.isError).toBe(true);
   expect(JSON.parse(result.content[0].text).code).toBe("VERSION_UNAVAILABLE");
-  expect(counts(item)).toEqual([0, 0, 0, 0, 0]);
+  expect(counts(item)).toEqual([0, 0, 0, 0, 0, 0]);
 
   const listed = await client.callTool({
     name: "list_libraries",

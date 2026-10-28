@@ -2,6 +2,7 @@ import { expect, test, vi } from "vitest";
 import { SearchService } from "../../../../dist/modules/search/search.service.js";
 import { MarkdownDocumentParser } from "../../../../dist/modules/documentation/parsers/markdown-document.parser.js";
 import { searchDocsOutputSchema } from "../../../../dist/modules/search/schemas/search-docs.schema.js";
+import { createRegistry } from "../../libraries/tests/fixtures/library.fixture.mjs";
 
 const request = { library: "nextjs", query: "revalidation" };
 
@@ -27,6 +28,7 @@ function setup(
 
   const adapter = {
     libraryId: "nextjs",
+    isValidPath: vi.fn(() => true),
     fetchCatalog: vi.fn(async () => catalog),
     fetchDocument: vi.fn(async (path) => ({
       libraryId: "nextjs",
@@ -42,7 +44,7 @@ function setup(
 
   vi.spyOn(parser, "parse");
   return {
-    service: new SearchService(adapter, parser),
+    service: new SearchService(createRegistry(adapter), parser),
     adapter,
     parser,
     contents,

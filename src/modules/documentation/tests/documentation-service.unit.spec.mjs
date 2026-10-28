@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { expect, test, vi } from "vitest";
 import { DocumentationService } from "../../../../dist/modules/documentation/documentation.service.js";
 import { MarkdownDocumentParser } from "../../../../dist/modules/documentation/parsers/markdown-document.parser.js";
+import { createRegistry } from "../../libraries/tests/fixtures/library.fixture.mjs";
 
 const fixture = readFileSync(
   new URL("./fixtures/document.md", import.meta.url),
@@ -21,11 +22,16 @@ function setup(content = fixture) {
   const adapter = {
     libraryId: "nextjs",
     fetchDocument: vi.fn().mockResolvedValue(source),
+    fetchCatalog: vi.fn(),
+    isValidPath: vi.fn(() => true),
   };
   return {
     source,
     adapter,
-    service: new DocumentationService(adapter, new MarkdownDocumentParser()),
+    service: new DocumentationService(
+      createRegistry(adapter),
+      new MarkdownDocumentParser(),
+    ),
   };
 }
 

@@ -1,3 +1,3 @@
-import { LIBRARY_IDS } from "../constants/library.constant.js";
+import type { LIBRARY_DEFINITIONS } from "../constants/library-definitions.constant.js";
 
-export type TLibraryId = (typeof LIBRARY_IDS)[number];
+export type TLibraryId = keyof typeof LIBRARY_DEFINITIONS;

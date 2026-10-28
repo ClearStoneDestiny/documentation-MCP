@@ -6,6 +6,7 @@ import { cacheEntrySchema, type TCacheEntry } from "./schemas/cache.schema.js";
 import { ICacheOptions } from "./interfaces/cache-options.interface.js";
 import { CACHE_OPTIONS } from "./constants/cache-options.constant.js";
 import { contentHash } from "./utils/content-hash.util.js";
+import type { ICacheKey } from "./interfaces/cache-key.interface.js";
 
 @Injectable()
 export class FileCacheService {
@@ -24,22 +25,29 @@ export class FileCacheService {
     this.options = { ...options, directory: resolve(options.directory) };
   }
 
-  private entryPath(url: string): string {
-    return join(this.options.directory, "v1", `${contentHash(url)}.json`);
+  private entryPath(key: ICacheKey): string {
+    const identity = JSON.stringify([
+      key.libraryId,
+      key.documentationSetId,
+      key.url,
+    ]);
+    return join(this.options.directory, "v2", `${contentHash(identity)}.json`);
   }
 
-  async read(url: string): Promise<TCacheEntry | null> {
+  async read(key: ICacheKey): Promise<TCacheEntry | null> {
     if (!this.options.enabled) {
       return null;
     }
 
     try {
       const entry = cacheEntrySchema.parse(
-        JSON.parse(await readFile(this.entryPath(url), "utf8")),
+        JSON.parse(await readFile(this.entryPath(key), "utf8")),
       );
 
       if (
-        entry.url !== url ||
+        entry.libraryId !== key.libraryId ||
+        entry.documentationSetId !== key.documentationSetId ||
+        entry.url !== key.url ||
         entry.contentHash !== contentHash(entry.content)
       ) {
         throw new Error("Cache identity or content hash mismatch");
@@ -65,11 +73,11 @@ export class FileCacheService {
       return false;
     }
 
-    const target = this.entryPath(entry.url);
+    const target = this.entryPath(entry);
     const temporary = `${target}.${randomUUID()}.tmp`;
 
     try {
-      await mkdir(join(this.options.directory, "v1"), {
+      await mkdir(join(this.options.directory, "v2"), {
         recursive: true,
         mode: 0o700,
       });
@@ -90,12 +98,12 @@ export class FileCacheService {
     }
   }
 
-  async remove(url: string): Promise<void> {
+  async remove(key: ICacheKey): Promise<void> {
     if (!this.options.enabled) {
       return;
     }
 
-    await rm(this.entryPath(url), { force: true }).catch((error: unknown) => {
+    await rm(this.entryPath(key), { force: true }).catch((error: unknown) => {
       console.error("[cache] Could not remove entry:", error);
     });
   }

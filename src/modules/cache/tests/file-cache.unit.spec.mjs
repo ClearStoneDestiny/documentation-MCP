@@ -1,6 +1,13 @@
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import {
   afterEach,
   beforeEach,
@@ -27,7 +34,9 @@ async function setup() {
   const options = { directory, ttlMs: 3_600_000, enabled: true };
   const url = "https://nextjs.org/docs/app/guides/example.md";
   const entry = {
-    schemaVersion: 1,
+    schemaVersion: 2,
+    libraryId: "nextjs",
+    documentationSetId: "current",
     url,
     content: "# Example\n\nBody.",
     contentHash: contentHash("# Example\n\nBody."),
@@ -36,56 +45,76 @@ async function setup() {
     etag: '"v1"',
     lastModified: "Mon, 26 Oct 2026 10:00:00 GMT",
   };
+  const identity = JSON.stringify([
+    entry.libraryId,
+    entry.documentationSetId,
+    url,
+  ]);
 
   return {
     store: new FileCacheService(options),
     options,
     entry,
     directory,
-    file: join(directory, "v1", `${contentHash(url)}.json`),
+    file: join(directory, "v2", `${contentHash(identity)}.json`),
   };
 }
 
-test("persists content and validators across store instances with URL-hashed filenames", async () => {
-  const { store, options, entry, directory } = await setup();
+test("persists scoped content and validators across store instances", async () => {
+  const { store, options, entry, directory, file } = await setup();
 
   expect(await store.write(entry)).toBe(true);
-  expect(await new FileCacheService(options).read(entry.url)).toEqual(entry);
-  expect(await readdir(join(directory, "v1"))).toEqual([
-    `${contentHash(entry.url)}.json`,
-  ]);
+  expect(await new FileCacheService(options).read(entry)).toEqual(entry);
+  expect(await readdir(join(directory, "v2"))).toEqual([basename(file)]);
 });
 
-test.each(["invalid-json", "wrong-hash", "wrong-url", "future-schema"])(
-  "ignores corrupt or incompatible cache records: %s",
-  async (kind) => {
-    const { store, entry, file } = await setup();
-    await store.write(entry);
-    const invalid = { ...entry };
+test.each([
+  "invalid-json",
+  "wrong-hash",
+  "wrong-url",
+  "wrong-library",
+  "wrong-set",
+  "old-schema",
+  "future-schema",
+])("ignores corrupt or incompatible cache records: %s", async (kind) => {
+  const { store, entry, file } = await setup();
+  await store.write(entry);
+  const invalid = { ...entry };
 
-    if (kind === "wrong-hash") {
-      invalid.content += "Tampered";
-    }
+  if (kind === "wrong-hash") {
+    invalid.content += "Tampered";
+  }
 
-    if (kind === "wrong-url") {
-      invalid.url = "https://example.com/other";
-    }
+  if (kind === "wrong-url") {
+    invalid.url = "https://example.com/other";
+  }
 
-    if (kind === "future-schema") {
-      invalid.schemaVersion = 2;
-    }
+  if (kind === "wrong-library") {
+    invalid.libraryId = "other";
+  }
 
-    await writeFile(
-      file,
-      kind === "invalid-json" ? "{partial" : JSON.stringify(invalid),
-    );
+  if (kind === "wrong-set") {
+    invalid.documentationSetId = "release-1";
+  }
 
-    expect(await store.read(entry.url)).toBeNull();
-    expect(console.error).toHaveBeenCalled();
-    expect(await store.write(entry)).toBe(true);
-    expect(await store.read(entry.url)).toEqual(entry);
-  },
-);
+  if (kind === "old-schema") {
+    invalid.schemaVersion = 1;
+  }
+
+  if (kind === "future-schema") {
+    invalid.schemaVersion = 3;
+  }
+
+  await writeFile(
+    file,
+    kind === "invalid-json" ? "{partial" : JSON.stringify(invalid),
+  );
+
+  expect(await store.read(entry)).toBeNull();
+  expect(console.error).toHaveBeenCalled();
+  expect(await store.write(entry)).toBe(true);
+  expect(await store.read(entry)).toEqual(entry);
+});
 
 test("concurrent writes leave one complete record and no temporary files", async () => {
   const { store, entry, directory } = await setup();
@@ -97,14 +126,14 @@ test("concurrent writes leave one complete record and no temporary files", async
   expect(
     await Promise.all(entries.map((candidate) => store.write(candidate))),
   ).toEqual(Array(8).fill(true));
-  expect(entries).toContainEqual(await store.read(entry.url));
-  expect(await readdir(join(directory, "v1"))).toHaveLength(1);
+  expect(entries).toContainEqual(await store.read(entry));
+  expect(await readdir(join(directory, "v2"))).toHaveLength(1);
 });
 
 test("handles missing entries and an unusable directory without breaking callers", async () => {
   const { store, entry, directory } = await setup();
 
-  expect(await store.read(entry.url)).toBeNull();
+  expect(await store.read(entry)).toBeNull();
 
   const blocked = join(directory, "blocked");
   await writeFile(blocked, "This is a file");
@@ -116,7 +145,7 @@ test("handles missing entries and an unusable directory without breaking callers
   });
 
   expect(await broken.write(entry)).toBe(false);
-  expect(await broken.read(entry.url)).toBeNull();
+  expect(await broken.read(entry)).toBeNull();
   expect(await readFile(blocked, "utf8")).toBe("This is a file");
 });
 
@@ -125,8 +154,61 @@ test("disabled caching does not create files", async () => {
   const store = new FileCacheService({ ...options, enabled: false });
 
   expect(await store.write(entry)).toBe(false);
-  expect(await store.read(entry.url)).toBeNull();
+  expect(await store.read(entry)).toBeNull();
   expect(await readdir(directory)).toEqual([]);
+});
+
+test("the same URL persists independently across libraries and documentation sets", async () => {
+  const { store, options, entry, directory } = await setup();
+
+  const entries = [
+    entry,
+    { ...entry, libraryId: "other" },
+    { ...entry, documentationSetId: "release-1" },
+  ].map((candidate, index) => {
+    const content = `# Scoped document ${index}`;
+
+    return {
+      ...candidate,
+      content,
+      contentHash: contentHash(content),
+      etag: `"scope-${index}"`,
+    };
+  });
+
+  expect(
+    await Promise.all(entries.map((candidate) => store.write(candidate))),
+  ).toEqual([true, true, true]);
+
+  const restarted = new FileCacheService(options);
+
+  for (const candidate of entries) {
+    expect(await restarted.read(candidate)).toEqual(candidate);
+  }
+
+  expect(await readdir(join(directory, "v2"))).toHaveLength(3);
+
+  await restarted.remove(entry);
+
+  expect(await store.read(entry)).toBeNull();
+  expect(await store.read(entries[1])).toEqual(entries[1]);
+  expect(await store.read(entries[2])).toEqual(entries[2]);
+});
+
+test("legacy v1 entries are left intact and never reused by the v2 cache", async () => {
+  const { store, entry, directory } = await setup();
+  const legacyFile = join(directory, "v1", `${contentHash(entry.url)}.json`);
+  const { libraryId, documentationSetId, ...legacy } = entry;
+
+  legacy.schemaVersion = 1;
+
+  await mkdir(join(directory, "v1"));
+  await writeFile(legacyFile, JSON.stringify(legacy));
+
+  expect(await store.read(entry)).toBeNull();
+  expect(await store.write(entry)).toBe(true);
+  expect(await store.read(entry)).toEqual(entry);
+  expect(JSON.parse(await readFile(legacyFile, "utf8"))).toEqual(legacy);
 });
 
 test("reads explicit environment settings", () => {

@@ -17,6 +17,7 @@ import { CachedMarkdownService } from "../../../../dist/modules/sources/services
 import {
   createRegistry,
   nextjsSourceOptions,
+  nextjsCacheScope,
 } from "../../libraries/tests/fixtures/library.fixture.mjs";
 
 const nextjsLibrary = {
@@ -60,6 +61,7 @@ async function connect(service) {
         ttlMs: 0,
         enabled: false,
       }),
+      nextjsCacheScope,
     ),
     nextjsSourceOptions,
   );

@@ -12,6 +12,7 @@ import { CachedMarkdownService } from "../../../../dist/modules/sources/services
 import {
   createRegistry,
   nextjsSourceOptions,
+  nextjsCacheScope,
 } from "../../libraries/tests/fixtures/library.fixture.mjs";
 
 const catalogUrl = "https://nextjs.org/docs/llms.txt";
@@ -25,7 +26,10 @@ async function connect(
   cacheOptions = { directory: process.cwd(), ttlMs: 0, enabled: false },
 ) {
   const adapter = new NextjsAdapter(
-    new CachedMarkdownService(new FileCacheService(cacheOptions)),
+    new CachedMarkdownService(
+      new FileCacheService(cacheOptions),
+      nextjsCacheScope,
+    ),
     nextjsSourceOptions,
   );
   const server = new McpServer({ name: "versions-test", version: "1.0.0" });

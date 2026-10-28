@@ -2,6 +2,8 @@ import { Inject, Injectable } from "@nestjs/common";
 import { contentHash } from "../cache/utils/content-hash.util.js";
 import { MarkdownDocumentParser } from "../documentation/parsers/markdown-document.parser.js";
 import { LibraryRegistry } from "../libraries/library-registry.service.js";
+import { CURRENT_DOCUMENTATION_SET_ID } from "../libraries/constants/documentation-set.constant.js";
+import type { IDocumentationScope } from "../libraries/interfaces/documentation-scope.interface.js";
 import type { ISourceAdapter } from "../sources/interfaces/source-adapter.interface.js";
 import type { ISourceDocument } from "../sources/interfaces/source-document.interface.js";
 import { SearchError } from "./errors/search.error.js";
@@ -14,12 +16,15 @@ import {
 import { searchSnippet } from "./utils/search-snippet.util.js";
 import { queryTerms } from "./utils/tokenize.util.js";
 
+interface ISearchState {
+  readonly index: SectionIndex;
+  readonly hashes: Map<string, string>;
+  pending: Promise<void>;
+}
+
 @Injectable()
 export class SearchService {
-  private readonly index = new SectionIndex();
-  private readonly hashes = new Map<string, string>();
-  // Serialize index synchronization, one request's abort never cancels another
-  private pending: Promise<void> = Promise.resolve();
+  private readonly states = new Map<string, ISearchState>();
 
   constructor(
     @Inject(LibraryRegistry) private readonly registry: LibraryRegistry,
@@ -58,10 +63,22 @@ export class SearchService {
       );
     }
 
-    const task = this.pending.then(() =>
-      this.synchronizeAndSearch(validation.data, adapter, signal, onProgress),
+    const state = this.stateFor({
+      libraryId: registration.id,
+      documentationSetId: CURRENT_DOCUMENTATION_SET_ID,
+    });
+
+    // Serialize within a scope, different libraries can index independently
+    const task = state.pending.then(() =>
+      this.synchronizeAndSearch(
+        validation.data,
+        adapter,
+        state,
+        signal,
+        onProgress,
+      ),
     );
-    this.pending = task.then(
+    state.pending = task.then(
       () => {},
       () => {},
     );
@@ -85,13 +102,32 @@ export class SearchService {
     });
   }
 
+  private stateFor(scope: IDocumentationScope): ISearchState {
+    const key = JSON.stringify([scope.libraryId, scope.documentationSetId]);
+    let state = this.states.get(key);
+
+    if (!state) {
+      state = {
+        index: new SectionIndex(),
+        hashes: new Map(),
+        pending: Promise.resolve(),
+      };
+      this.states.set(key, state);
+    }
+
+    return state;
+  }
+
   private async synchronizeAndSearch(
     request: ReturnType<typeof searchDocsInputSchema.parse>,
     adapter: ISourceAdapter,
+    state: ISearchState,
     signal?: AbortSignal,
     onProgress?: (completed: number, total: number) => Promise<void>,
   ): Promise<TSearchDocsResult> {
     signal?.throwIfAborted();
+
+    const { index, hashes } = state;
 
     const catalog = await adapter
       .fetchCatalog(signal, { refresh: request.refresh })
@@ -109,10 +145,10 @@ export class SearchService {
     const catalogPaths = new Set(
       catalog.documents.map((document) => document.path),
     );
-    this.index.retain(catalogPaths);
+    index.retain(catalogPaths);
 
-    for (const path of this.hashes.keys()) {
-      if (!catalogPaths.has(path)) this.hashes.delete(path);
+    for (const path of hashes.keys()) {
+      if (!catalogPaths.has(path)) hashes.delete(path);
     }
 
     const selected = catalog.documents.filter(
@@ -147,19 +183,19 @@ export class SearchService {
           const hash = contentHash(source.content);
           code = "PARSE_ERROR";
 
-          if (this.hashes.get(reference.path) !== hash) {
+          if (hashes.get(reference.path) !== hash) {
             const parsed = this.parser.parse(source);
 
-            this.index.replace(parsed);
-            this.hashes.set(reference.path, hash);
+            index.replace(parsed);
+            hashes.set(reference.path, hash);
           }
           documents.set(reference.path, source);
         } catch {
           signal?.throwIfAborted();
 
           // Never search an old in-memory revision after a failed current load
-          this.index.remove(reference.path);
-          this.hashes.delete(reference.path);
+          index.remove(reference.path);
+          hashes.delete(reference.path);
 
           failures.push({ path: reference.path, code });
         }
@@ -190,7 +226,7 @@ export class SearchService {
 
     const paths = new Set(documents.keys());
     const terms = queryTerms(request.query);
-    const matches = this.index.search(terms, paths);
+    const matches = index.search(terms, paths);
 
     failures.sort((left, right) => left.path.localeCompare(right.path, "en"));
 
@@ -204,7 +240,7 @@ export class SearchService {
         .slice(0, request.limit)
         .map(({ section, score, matchedTerms }) => {
           const source = documents.get(section.path)!;
-          const hash = this.hashes.get(section.path)!;
+          const hash = hashes.get(section.path)!;
           return {
             path: section.path,
             sourceUrl: source.sourceUrl,
@@ -237,7 +273,7 @@ export class SearchService {
         catalogDocuments: catalog.documents.length,
         selectedDocuments: selected.length,
         indexedDocuments: documents.size,
-        indexedSections: this.index.sectionCount(paths),
+        indexedSections: index.sectionCount(paths),
         failedDocuments: failures.length,
         staleDocuments: [...documents.values()].filter(
           (source) => source.cache?.status === "stale",

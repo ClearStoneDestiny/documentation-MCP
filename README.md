@@ -59,12 +59,14 @@ src/
       schemas/                 # Versioned storage records and response metadata
       tests/                   # Disk persistence and corruption checks
     code-examples/
-      code-examples.module.ts  # Registry and parser dependencies
+      code-examples.module.ts  # Library registry dependencies
       code-examples.service.ts # Extract, filter, and rank complete code blocks
       schemas/                 # get_code_examples input/output contracts
       tests/                   # Extraction, filtering, failures, and cancellation
     documentation/
-      documentation.module.ts # Imports sources and exports documentation providers
+      documentation.module.ts # Registry, processing, and documentation providers
+      document-processing.module.ts # Installed parser and index implementations
+      document-pipeline-registry.service.ts # Processing pipelines by source format
       documentation.service.ts # Fetch, parse, select, and paginate documentation
       schemas/                 # Shared get_documentation input/output contracts
       errors/                  # Recoverable documentation errors
@@ -122,7 +124,7 @@ export const LIBRARY_DEFINITIONS = {
 } as const satisfies Record<string, ILibraryDefinition>;
 ```
 
-The object key is the library ID. `adapter` is a class reference; Nest constructs the instance and injects `CachedMarkdownService` and `LIBRARY_SOURCE_OPTIONS` (`id`, `documentationUrl`, and `sources`). `NextjsAdapter` uses these options for catalog requests, catalog URL normalization, and document requests. The supported optional catalog configuration currently describes an `llms-txt` source; Next.js requires it. Document URL rules remain in the adapter, and the current source contract returns Markdown. Documentation base URLs must end with `/`.
+The object key is the library ID. `adapter` is a class reference; Nest constructs the instance and injects `CachedMarkdownService` and `LIBRARY_SOURCE_OPTIONS` (`id`, `documentationUrl`, and `sources`). `NextjsAdapter` uses these options for catalog requests, catalog URL normalization, and document requests. The supported optional catalog configuration currently describes an `llms-txt` source; Next.js requires it. Document URL rules remain in the adapter. `documentFormat` identifies the format returned by `fetchDocument`, after any conversion inside the adapter; the installed processing pipeline currently supports Markdown. Documentation base URLs must end with `/`.
 
 `SourcesModule` registers the configured definitions once for the application. `LibrarySourcesModule.register(definitions)` validates and snapshots definitions, creates an isolated Nest scope for each enabled library, and exports the resulting `LIBRARY_REGISTRATIONS`. `LibraryRegistry` consumes this collection without importing specific adapters. Libraries can share an adapter class while receiving separate instances and source options. No source requests are made during registration or library discovery.
 
@@ -132,7 +134,22 @@ All library tools resolve the requested ID through `LibraryRegistry`. Schemas va
 
 `ISourceAdapter.isValidPath(path)` defines source-specific syntax for document paths and subtree prefixes, independently of page existence. The common path schema rejects URLs, absolute paths, dot segments, encoded paths, query strings, fragments, backslashes, whitespace, and control characters. It allows filenames such as `guide/api.v2.md` when the selected adapter supports them. Next.js retains its stricter extensionless path rules. Invalid paths and prefixes return `INVALID_REQUEST` before source loading.
 
-Documentation, search, examples, and version responses use the requested registration's ID and metadata. Version listing still describes one `current` documentation set using the catalog's declared version. Disk cache entries and search state are scoped by library ID and documentation set ID. Each scope owns its section index, content hashes, and indexing queue; switching libraries preserves the other libraries' state. Historical sets and capability resolution remain follow-up stages. The existing current-Markdown tool capabilities are preserved during this stage.
+Documentation, search, examples, and version responses use the requested registration's ID and metadata. Version listing still describes one `current` documentation set using the catalog's declared version. Disk cache entries and search state are scoped by library ID and documentation set ID. Each scope owns its section index, content hashes, and indexing queue; switching libraries preserves the other libraries' state. Historical set selection remains a follow-up stage.
+
+Capabilities are resolved locally at startup from executable source operations and installed processing pipelines. `ISourceAdapter.fetchDocument`, `fetchCatalog`, and `isValidPath` are optional: implement the operations the source can actually provide. `fetchCatalog` must return the normalized `ISourceCatalog`, with document references, rather than raw source markup. There is no independently configurable `capabilities.tools` list.
+
+| Capability | Required behavior |
+| --- | --- |
+| `get_documentation` | A document loader, path validation, and a parser installed for the adapter's `documentFormat`. |
+| `search_docs` | All document requirements, normalized catalog discovery, and an installed index factory. |
+| `get_code_examples` | The same indexed pipeline; its parser returns sections and extracted code blocks for ranking. |
+| `list_versions` | Normalized catalog discovery, which currently supplies metadata for the `current` set. |
+
+`DocumentProcessingModule` installs the Markdown parser and section-index factory in `DocumentPipelineRegistry`. Registration binds those implementations together with the adapter's methods into `registration.operations`, then derives `capabilities.tools` from the resulting operation keys. Services execute those same operations, including their parser and index factory. A document-only source advertises only `get_documentation`; an unsupported document format cannot advertise document tools; a parser without an index cannot advertise search or example ranking.
+
+The MCP tools remain registered globally. Calling an unavailable operation for an enabled library returns `TOOL_UNSUPPORTED` before fetching sources, parsing, sending progress, or allocating an index. Unknown and disabled libraries still return `INVALID_REQUEST`. Capability discovery performs no HTTP requests or indexing. Temporary source failures remain `SOURCE_ERROR` (or the existing stale/partial/index failure behavior); they do not change the library's advertised support.
+
+`historicalDocumentation` remains `false` because every installed operation routes only to the `current` documentation set. Adapter/configuration flags and catalog-declared version numbers cannot enable it; historical discovery and version-specific retrieval must be implemented together before it can become available.
 
 Nest injects `CACHE_SCOPE` into each library's `CachedMarkdownService`, so adapters receive a loader already bound to their library and the `current` documentation set. `load(url, signal?, options?)` retains its existing signature. Standalone callers must construct the loader with an explicit scope: `new CachedMarkdownService(store, { libraryId: "nextjs", documentationSetId: "current" })`. There is no shared default namespace. A source-declared `docVersion` remains metadata and does not change the documentation set ID or enable historical selection.
 

@@ -1,13 +1,11 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { contentHash } from "../cache/utils/content-hash.util.js";
-import { MarkdownDocumentParser } from "../documentation/parsers/markdown-document.parser.js";
 import { LibraryRegistry } from "../libraries/library-registry.service.js";
 import { CURRENT_DOCUMENTATION_SET_ID } from "../libraries/constants/documentation-set.constant.js";
 import type { IDocumentationScope } from "../libraries/interfaces/documentation-scope.interface.js";
-import type { ISourceAdapter } from "../sources/interfaces/source-adapter.interface.js";
 import type { ISourceDocument } from "../sources/interfaces/source-document.interface.js";
 import { SearchError } from "./errors/search.error.js";
-import { SectionIndex } from "./section-index.js";
+import type { SectionIndex } from "./section-index.js";
 import {
   searchDocsInputSchema,
   type TSearchDocsInput,
@@ -15,6 +13,7 @@ import {
 } from "./schemas/search-docs.schema.js";
 import { searchSnippet } from "./utils/search-snippet.util.js";
 import { queryTerms } from "./utils/tokenize.util.js";
+import { IIndexedDocumentationOperation } from "../libraries/interfaces/indexed-documentation-operation.interface.js";
 
 interface ISearchState {
   readonly index: SectionIndex;
@@ -28,8 +27,6 @@ export class SearchService {
 
   constructor(
     @Inject(LibraryRegistry) private readonly registry: LibraryRegistry,
-    @Inject(MarkdownDocumentParser)
-    private readonly parser: MarkdownDocumentParser,
   ) {}
 
   async searchDocs(
@@ -51,11 +48,18 @@ export class SearchService {
       throw new SearchError("INVALID_REQUEST", "Unsupported library.");
     }
 
-    const adapter = registration.adapter;
+    const operation = registration.operations.search_docs;
+    
+    if (!operation) {
+      throw new SearchError(
+        "TOOL_UNSUPPORTED",
+        `search_docs is not supported for library ${registration.id}.`,
+      );
+    }
 
     if (
       validation.data.path_prefix &&
-      !adapter.isValidPath(validation.data.path_prefix)
+      !operation.isValidPath(validation.data.path_prefix)
     ) {
       throw new SearchError(
         "INVALID_REQUEST",
@@ -63,16 +67,19 @@ export class SearchService {
       );
     }
 
-    const state = this.stateFor({
-      libraryId: registration.id,
-      documentationSetId: CURRENT_DOCUMENTATION_SET_ID,
-    });
+    const state = this.stateFor(
+      {
+        libraryId: registration.id,
+        documentationSetId: CURRENT_DOCUMENTATION_SET_ID,
+      },
+      operation.createIndex,
+    );
 
     // Serialize within a scope, different libraries can index independently
     const task = state.pending.then(() =>
       this.synchronizeAndSearch(
         validation.data,
-        adapter,
+        operation,
         state,
         signal,
         onProgress,
@@ -102,13 +109,16 @@ export class SearchService {
     });
   }
 
-  private stateFor(scope: IDocumentationScope): ISearchState {
+  private stateFor(
+    scope: IDocumentationScope,
+    createIndex: IIndexedDocumentationOperation["createIndex"],
+  ): ISearchState {
     const key = JSON.stringify([scope.libraryId, scope.documentationSetId]);
     let state = this.states.get(key);
 
     if (!state) {
       state = {
-        index: new SectionIndex(),
+        index: createIndex(),
         hashes: new Map(),
         pending: Promise.resolve(),
       };
@@ -120,7 +130,7 @@ export class SearchService {
 
   private async synchronizeAndSearch(
     request: ReturnType<typeof searchDocsInputSchema.parse>,
-    adapter: ISourceAdapter,
+    operation: IIndexedDocumentationOperation,
     state: ISearchState,
     signal?: AbortSignal,
     onProgress?: (completed: number, total: number) => Promise<void>,
@@ -129,7 +139,7 @@ export class SearchService {
 
     const { index, hashes } = state;
 
-    const catalog = await adapter
+    const catalog = await operation
       .fetchCatalog(signal, { refresh: request.refresh })
       .catch((cause: unknown) => {
         signal?.throwIfAborted();
@@ -174,7 +184,7 @@ export class SearchService {
         let code: "SOURCE_ERROR" | "PARSE_ERROR" = "SOURCE_ERROR";
 
         try {
-          const source = await adapter.fetchDocument(reference.path, signal, {
+          const source = await operation.fetchDocument(reference.path, signal, {
             refresh: request.refresh,
           });
 
@@ -184,7 +194,7 @@ export class SearchService {
           code = "PARSE_ERROR";
 
           if (hashes.get(reference.path) !== hash) {
-            const parsed = this.parser.parse(source);
+            const parsed = operation.parse(source);
 
             index.replace(parsed);
             hashes.set(reference.path, hash);

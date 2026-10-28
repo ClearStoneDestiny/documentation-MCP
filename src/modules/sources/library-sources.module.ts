@@ -2,6 +2,7 @@ import { Module, type DynamicModule } from "@nestjs/common";
 import { CacheModule } from "../cache/cache.module.js";
 import type { TLibraryDefinitions } from "../libraries/constants/library-definitions.constant.js";
 import { LIBRARY_REGISTRATIONS } from "../libraries/constants/library-registrations.constant.js";
+import { LIBRARY_ID_PATTERN } from "../libraries/constants/library.constant.js";
 import type { ILibraryDefinition } from "../libraries/interfaces/library-definition.interface.js";
 import type { TLibraryId } from "../libraries/interfaces/library-id.type.js";
 import { createLibraryRegistration } from "../libraries/utils/create-library-registration.util.js";
@@ -32,10 +33,8 @@ class LibrarySourceModule {
           }),
         },
         { provide: token, useClass: definition.adapter },
-        // Compatibility for services still injecting a concrete adapter
-        { provide: definition.adapter, useExisting: token },
       ],
-      exports: [token, definition.adapter],
+      exports: [token],
     };
   }
 }
@@ -60,7 +59,7 @@ export class LibrarySourcesModule {
         }),
       });
       return [
-        { id: id as TLibraryId, definition: snapshot, token: Symbol(id) },
+        { id, definition: snapshot, token: Symbol(id) },
       ];
     });
 
@@ -83,19 +82,20 @@ export class LibrarySourcesModule {
             ),
         },
       ],
-      exports: [LIBRARY_REGISTRATIONS, ...imports],
+      exports: [LIBRARY_REGISTRATIONS],
     };
   }
 }
 
 function validateDefinition(id: string, definition: ILibraryDefinition): void {
   const invalid = () => {
-    new Error(`Invalid library definition: ${id}`);
+    return new Error(`Invalid library definition: ${id}`);
   };
 
   // TODO: improve readability of condition
   if (
-    !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id) ||
+    !LIBRARY_ID_PATTERN.test(id) ||
+    id.length > 100 ||
     !definition ||
     typeof definition.enabled !== "boolean" ||
     typeof definition.name !== "string" ||

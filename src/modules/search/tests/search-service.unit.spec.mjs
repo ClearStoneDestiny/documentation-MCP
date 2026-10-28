@@ -26,6 +26,7 @@ function setup(
   };
 
   const adapter = {
+    libraryId: "nextjs",
     fetchCatalog: vi.fn(async () => catalog),
     fetchDocument: vi.fn(async (path) => ({
       libraryId: "nextjs",

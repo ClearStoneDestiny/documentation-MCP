@@ -18,7 +18,10 @@ function setup(content = fixture) {
     format: "markdown",
     content,
   };
-  const adapter = { fetchDocument: vi.fn().mockResolvedValue(source) };
+  const adapter = {
+    libraryId: "nextjs",
+    fetchDocument: vi.fn().mockResolvedValue(source),
+  };
   return {
     source,
     adapter,

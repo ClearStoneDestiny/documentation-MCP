@@ -1,5 +1,7 @@
 export type TDocumentationErrorCode =
   | "INVALID_REQUEST"
+  | "VERSION_UNAVAILABLE"
+  | "INDEX_UNAVAILABLE"
   | "SOURCE_ERROR"
   | "PARSE_ERROR"
   | "SECTION_NOT_FOUND"

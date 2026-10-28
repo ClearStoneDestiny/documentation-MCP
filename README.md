@@ -104,6 +104,32 @@ src/
 
 The Next.js adapter accepts a path relative to `/docs`, for example `app/getting-started/caching`. It loads the official `.md` URL through the disk cache; network requests have a 10-second timeout and support caller cancellation. Returned documents retain the original Markdown, canonical page URL, original download time, and cache metadata. Current documentation URLs are mutable; `fetchedAt` is a retrieval timestamp, not a framework version or immutable source revision. Unit tests use mocked HTTP responses and temporary directories, without accessing the user's default cache.
 
+## Library definitions and registration
+
+`src/modules/libraries/constants/library-definitions.constant.ts` is the entry point for library configuration:
+
+```ts
+export const LIBRARY_DEFINITIONS = {
+  nextjs: {
+    enabled: true,
+    name: "Next.js",
+    documentationUrl: NEXTJS_DOCS_BASE_URL,
+    sources: {
+      catalog: { format: "llms-txt", url: NEXTJS_CATALOG_URL },
+    },
+    adapter: NextjsAdapter,
+  },
+} as const satisfies Record<string, ILibraryDefinition>;
+```
+
+The object key is the library ID. `adapter` is a class reference; Nest constructs the instance and injects `CachedMarkdownService` and `LIBRARY_SOURCE_OPTIONS` (`id`, `documentationUrl`, and `sources`). `NextjsAdapter` uses these options for catalog requests, catalog URL normalization, and document requests. The supported optional catalog configuration currently describes an `llms-txt` source; Next.js requires it. Document URL rules remain in the adapter, and the current source contract returns Markdown. Documentation base URLs must end with `/`.
+
+`SourcesModule` registers the configured definitions once for the application. `LibrarySourcesModule.register(definitions)` validates and snapshots definitions, creates an isolated Nest scope for each enabled library, and exports the resulting `LIBRARY_REGISTRATIONS`. `LibraryRegistry` consumes this collection without importing specific adapters. Libraries can share an adapter class while receiving separate instances and source options. No source requests are made during registration or library discovery.
+
+Set `enabled: false`, rebuild when running compiled code, and restart the server to disable a library. It is omitted from `list_libraries`, its adapter is not instantiated, and library tools reject requests without fetching sources. Disabling every library is supported. Existing cached files are preserved. There is no background indexing; search indexing runs on demand. Editing configuration objects after registration does not change the running registrations.
+
+Library ID types and the shared library enum derive from the definition keys; there is no separate `LIBRARY_IDS` list. This is the first stage of multi-library support: documentation, search, and version services still inject the Next.js adapter through compatibility aliases, and some tool schemas and descriptions remain specific to Next.js. Full service routing through the registry, index/cache isolation, and capability resolution are follow-up stages. The existing current-Markdown tool capabilities are preserved during this stage.
+
 ## get_documentation
 
 Example tool arguments:

@@ -6,7 +6,8 @@ import {
   TListVersionsResult,
 } from "./schemas/list-versions.schema.js";
 import { DocumentationError } from "../documentation/errors/documentation.error.js";
-import { ISourceCatalog } from "../sources/interfaces/source-catalog.interface.js";
+import { sourceDocumentationSetsSchema } from "../sources/schemas/source-documentation-sets.schema.js";
+import type { ISourceDocumentationSets } from "../sources/interfaces/source-documentation-sets.interface.js";
 
 @Injectable()
 export class VersionService {
@@ -43,13 +44,13 @@ export class VersionService {
       );
     }
 
-    let catalog: ISourceCatalog;
+    let sets: ISourceDocumentationSets;
 
     try {
-      catalog = await operation.fetchCatalog(signal, {
+      sets = await operation.listDocumentationSets(signal, {
         refresh: request.refresh,
       });
-    } catch (cause: any) {
+    } catch (cause: unknown) {
       signal?.throwIfAborted();
 
       const message = cause instanceof Error ? cause.message : "Request failed";
@@ -59,25 +60,19 @@ export class VersionService {
 
     signal?.throwIfAborted();
 
+    const result = sourceDocumentationSetsSchema.safeParse(sets);
+
+    if (!result.success) {
+      throw new DocumentationError(
+        "SOURCE_ERROR",
+        "Source returned invalid or unavailable documentation sets.",
+        { cause: result.error },
+      );
+    }
+
     return {
       library: request.library,
-
-      documentationSets: [
-        {
-          id: "current",
-          label: `Current ${registration.name} documentation`,
-          channel: "current",
-          declaredVersion: catalog.docVersion ?? null,
-          versionRange: null,
-          sourceUrl: registration.documentationUrl,
-        },
-      ],
-
-      catalog: {
-        sourceUrl: catalog.sourceUrl,
-        fetchedAt: catalog.fetchedAt,
-        ...(catalog.cache ? { cache: catalog.cache } : {}),
-      },
+      ...result.data,
     };
   }
 }

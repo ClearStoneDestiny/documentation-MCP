@@ -14,6 +14,7 @@ import { CachedMarkdownService } from "../../../../dist/modules/sources/services
 import {
   createRegistry,
   nextjsSourceOptions,
+  nextjsCacheScope,
 } from "../../libraries/tests/fixtures/library.fixture.mjs";
 
 const fixture = readFileSync(
@@ -30,7 +31,10 @@ async function connect(
   const store = new FileCacheService(cacheOptions);
   const service = new DocumentationService(
     createRegistry(
-      new NextjsAdapter(new CachedMarkdownService(store), nextjsSourceOptions),
+      new NextjsAdapter(
+        new CachedMarkdownService(store, nextjsCacheScope),
+        nextjsSourceOptions,
+      ),
     ),
     new MarkdownDocumentParser(),
   );

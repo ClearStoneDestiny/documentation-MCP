@@ -15,6 +15,7 @@ import { CachedMarkdownService } from "../../../../dist/modules/sources/services
 import {
   createRegistry,
   nextjsSourceOptions,
+  nextjsCacheScope,
 } from "../../libraries/tests/fixtures/library.fixture.mjs";
 
 const catalogUrl = "https://nextjs.org/docs/llms.txt";
@@ -51,6 +52,7 @@ async function connect(options, service) {
           ttlMs: 0,
         },
       ),
+      nextjsCacheScope,
     ),
     nextjsSourceOptions,
   );

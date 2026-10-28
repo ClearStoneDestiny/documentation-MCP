@@ -15,6 +15,7 @@ import { GetDocumentationTool } from "../../../../dist/modules/mcp/tools/get-doc
 import {
   createRegistry,
   nextjsSourceOptions,
+  nextjsCacheScope,
 } from "../../libraries/tests/fixtures/library.fixture.mjs";
 
 const catalogUrl = "https://nextjs.org/docs/llms.txt";
@@ -39,7 +40,10 @@ async function options(ttlMs = 3_600_000) {
 
 async function connect(cacheOptions) {
   const adapter = new NextjsAdapter(
-    new CachedMarkdownService(new FileCacheService(cacheOptions)),
+    new CachedMarkdownService(
+      new FileCacheService(cacheOptions),
+      nextjsCacheScope,
+    ),
     nextjsSourceOptions,
   );
   const parser = new MarkdownDocumentParser();

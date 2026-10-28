@@ -16,6 +16,8 @@ const url = "https://nextjs.org/docs/app/guides/example.md";
 const body = "# Example\n\nOriginal documentation.";
 const changed = "# Example\n\nUpdated documentation.";
 const modified = "Mon, 26 Oct 2026 10:00:00 GMT";
+const scope = { libraryId: "nextjs", documentationSetId: "current" };
+const key = { ...scope, url };
 
 beforeEach(() => vi.spyOn(console, "error").mockImplementation(() => {}));
 afterEach(() => {
@@ -36,7 +38,7 @@ async function setup(ttlMs = 1000) {
     store,
     options,
     directory,
-    loader: new CachedMarkdownService(store),
+    loader: new CachedMarkdownService(store, scope),
   };
 }
 
@@ -55,6 +57,7 @@ test("uses a fresh disk entry across loader instances without HTTP and preserves
   const first = await loader.load(url);
   const second = await new CachedMarkdownService(
     new FileCacheService(options),
+    scope,
   ).load(url);
 
   expect(first.cache).toMatchObject({ status: "miss", persisted: true });
@@ -98,7 +101,7 @@ test("expires by TTL, sends ETag, and handles bodyless 304 without changing fetc
     status: "revalidated",
     checkedAt: "2026-10-26T10:00:02.000Z",
   });
-  expect((await store.read(url)).etag).toBe('"v1b"');
+  expect((await store.read(key)).etag).toBe('"v1b"');
   expect((await loader.load(url)).cache.status).toBe("hit");
   expect(fetchMock).toHaveBeenCalledTimes(2);
 });
@@ -135,7 +138,7 @@ test("refresh checks even a fresh entry and replaces changed content and old val
 
   expect(updated.content).toBe(changed);
   expect(updated.cache.status).toBe("updated");
-  expect((await store.read(url)).etag).toBeUndefined();
+  expect((await store.read(key)).etag).toBeUndefined();
   expect((await loader.load(url)).content).toBe(changed);
 
   await loader.load(url, undefined, { refresh: true });
@@ -174,7 +177,7 @@ test.each(["network", "timeout", 429, 503])(
       checkedAt: first.cache.checkedAt,
       warning: expect.any(String),
     });
-    expect((await store.read(url)).checkedAt).toBe(first.cache.checkedAt);
+    expect((await store.read(key)).checkedAt).toBe(first.cache.checkedAt);
 
     await loader.load(url);
 
@@ -198,7 +201,7 @@ test.each([302, 308, 401, 403, 404, 410])(
 
     if (status === 404 || status === 410) {
       {
-        expect(await store.read(url)).toBeNull();
+        expect(await store.read(key)).toBeNull();
       }
     }
   },
@@ -223,7 +226,7 @@ test.each(["html", "empty"])(
     await loader.load(url);
     await expect(loader.load(url)).rejects.toThrow();
 
-    expect((await store.read(url)).content).toBe(body);
+    expect((await store.read(key)).content).toBe(body);
   },
 );
 
@@ -302,7 +305,7 @@ test.each([200, 304])(
       status: "disabled",
       persisted: false,
     });
-    expect(await store.read(url)).toBeNull();
+    expect(await store.read(key)).toBeNull();
   },
 );
 
@@ -314,6 +317,7 @@ test("still serves the online document if its cache cannot be written", async ()
 
   const loader = new CachedMarkdownService(
     new FileCacheService({ directory: blocked, ttlMs: 1000, enabled: true }),
+    scope,
   );
 
   vi.stubGlobal(
@@ -328,4 +332,125 @@ test("still serves the online document if its cache cannot be written", async ()
     persisted: false,
     warning: expect.any(String),
   });
+});
+
+test("content, validators, and stale fallback are isolated for the same URL in different scopes", async () => {
+  const { store, options } = await setup();
+  const scopes = [
+    scope,
+    { ...scope, libraryId: "other" },
+    { ...scope, documentationSetId: "release-1" },
+  ];
+  const loaders = scopes.map(
+    (candidate) => new CachedMarkdownService(store, candidate),
+  );
+  const fetchMock = vi.fn();
+  for (let index = 0; index < scopes.length; index++) {
+    fetchMock.mockResolvedValueOnce(
+      markdown(`# Scope ${index}`, { ETag: `"scope-${index}"` }),
+    );
+  }
+  vi.stubGlobal("fetch", fetchMock);
+
+  for (let index = 0; index < loaders.length; index++) {
+    const first = await loaders[index].load(url);
+    expect(first.cache.status).toBe("miss");
+    expect(first.content).toBe(`# Scope ${index}`);
+    expect(fetchMock.mock.calls[index][1].headers.has("If-None-Match")).toBe(
+      false,
+    );
+  }
+
+  for (let index = 0; index < scopes.length; index++) {
+    const restarted = new CachedMarkdownService(
+      new FileCacheService(options),
+      scopes[index],
+    );
+    expect((await restarted.load(url)).content).toBe(`# Scope ${index}`);
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 304 }));
+    const result = await restarted.load(url, undefined, { refresh: true });
+    expect(result.cache.status).toBe("revalidated");
+    expect(fetchMock.mock.lastCall[1].headers.get("If-None-Match")).toBe(
+      `"scope-${index}"`,
+    );
+  }
+  expect(fetchMock).toHaveBeenCalledTimes(6);
+
+  fetchMock.mockRejectedValue(new TypeError("Offline"));
+  for (let index = 0; index < loaders.length; index++) {
+    const stale = await loaders[index].load(url, undefined, { refresh: true });
+    expect(stale.cache.status).toBe("stale");
+    expect(stale.content).toBe(`# Scope ${index}`);
+  }
+  const uncached = new CachedMarkdownService(store, {
+    ...scope,
+    libraryId: "uncached",
+  });
+  await expect(uncached.load(url)).rejects.toThrow("Offline");
+});
+
+test.each(["no-store-200", "no-store-304", 404, 410])(
+  "%s removes only the current scope's saved entry",
+  async (outcome) => {
+    const { store } = await setup();
+    const otherScope = { ...scope, libraryId: "other" };
+    const first = new CachedMarkdownService(store, scope);
+    const other = new CachedMarkdownService(store, otherScope);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(markdown(body, { ETag: '"first"' }))
+      .mockResolvedValueOnce(markdown(changed, { ETag: '"other"' }));
+    vi.stubGlobal("fetch", fetchMock);
+    await first.load(url);
+    await other.load(url);
+
+    const status =
+      typeof outcome === "number"
+        ? outcome
+        : outcome.endsWith("304")
+          ? 304
+          : 200;
+    fetchMock.mockResolvedValueOnce(
+      new Response(status === 304 ? null : body, {
+        status,
+        headers: {
+          "Content-Type": "text/markdown",
+          "Cache-Control": "no-store",
+        },
+      }),
+    );
+    const request = first.load(url, undefined, { refresh: true });
+    if (typeof outcome === "number")
+      await expect(request).rejects.toThrow(`(${status})`);
+    else expect((await request).cache.status).toBe("disabled");
+
+    expect(await store.read(key)).toBeNull();
+    expect((await store.read({ ...otherScope, url })).etag).toBe('"other"');
+    const unaffected = await other.load(url);
+    expect(unaffected.cache.status).toBe("hit");
+    expect(unaffected.content).toBe(changed);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  },
+);
+
+test("requires an explicit cache scope and snapshots it at construction", async () => {
+  const { store } = await setup();
+  expect(() => new CachedMarkdownService(store)).toThrow();
+  expect(
+    () =>
+      new CachedMarkdownService(store, {
+        libraryId: "nextjs",
+        documentationSetId: "",
+      }),
+  ).toThrow();
+  const mutable = { ...scope };
+  const loader = new CachedMarkdownService(store, mutable);
+  mutable.libraryId = "other";
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => markdown()),
+  );
+  await loader.load(url);
+  expect((await store.read(key)).content).toBe(body);
+  expect(await store.read({ ...mutable, url })).toBeNull();
 });

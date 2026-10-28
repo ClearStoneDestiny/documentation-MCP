@@ -52,7 +52,7 @@ export class CodeExamplesService {
     if (request.version !== "current") {
       throw new DocumentationError(
         "VERSION_UNAVAILABLE",
-        "Only the current documentation set is available. Use version: current, historical versions and compatibility ranges are not supported.",
+        "Only the current documentation set is available. Use version: current; package release numbers and compatibility ranges are not documentation-set selectors.",
       );
     }
 

@@ -12,6 +12,7 @@ export function resolveLibraryOperations(
     : undefined;
 
   const fetchCatalog = adapter.fetchCatalog?.bind(adapter);
+  const listDocumentationSets = adapter.listDocumentationSets?.bind(adapter);
   
   const documentation =
     adapter.fetchDocument && adapter.isValidPath && pipeline
@@ -34,6 +35,8 @@ export function resolveLibraryOperations(
   return Object.freeze({
     ...(documentation ? { get_documentation: documentation } : {}),
     ...(indexed ? { search_docs: indexed, get_code_examples: indexed } : {}),
-    ...(fetchCatalog ? { list_versions: Object.freeze({ fetchCatalog }) } : {}),
+    ...(listDocumentationSets
+      ? { list_versions: Object.freeze({ listDocumentationSets }) }
+      : {}),
   });
 }

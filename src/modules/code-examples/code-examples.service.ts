@@ -38,6 +38,12 @@ export class CodeExamplesService {
 
     signal?.throwIfAborted();
 
+    const registration = this.registry.get(request.library);
+
+    if (!registration) {
+      throw new DocumentationError("INVALID_REQUEST", "Unsupported library.");
+    }
+
     if (request.version !== "current") {
       throw new DocumentationError(
         "VERSION_UNAVAILABLE",
@@ -45,13 +51,16 @@ export class CodeExamplesService {
       );
     }
 
-    const registration = this.registry.get(request.library);
+    const adapter = registration.adapter;
+    const prefix = request.filters?.path_prefix;
 
-    if (!registration) {
-      throw new DocumentationError("INVALID_REQUEST", "Unsupported library.");
+    if (prefix && !adapter.isValidPath(prefix)) {
+      throw new DocumentationError(
+        "INVALID_REQUEST",
+        "Invalid documentation path prefix for this library.",
+      );
     }
 
-    const adapter = registration.adapter;
     const catalog = await adapter
       .fetchCatalog(signal, { refresh: request.refresh })
       .catch((cause: unknown) => {
@@ -66,7 +75,6 @@ export class CodeExamplesService {
 
     signal?.throwIfAborted();
 
-    const prefix = request.filters?.path_prefix;
     const selected = catalog.documents.filter(
       ({ path }) => !prefix || path === prefix || path.startsWith(`${prefix}/`),
     );

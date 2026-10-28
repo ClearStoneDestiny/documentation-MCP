@@ -20,7 +20,7 @@ export class ListVersionsTool {
       {
         description:
           "List documentation sets available through this server for a supported library. " +
-          "Currently, Next.js provides only the current documentation set. " +
+          "Select a library from list_libraries. Only the current documentation set is supported. " +
           "Returns the catalog-declared version when available; this is not an " +
           "immutable documentation revision or a verified compatibility range. " +
           "Uses a disk cache; refresh checks the catalog source immediately. " +

@@ -16,7 +16,7 @@ export class SearchDocsTool {
       "search_docs",
       {
         description:
-          "Search sections of current official Next.js documentation with lexical keywords (usually English). First call downloads and indexes all pages directly listed in the root catalog, or only path_prefix; this can take time. Uses the disk cache and updates changed sections by content hash. Nested catalogs such as Pages Router are not expanded. Results include snippets and ready-to-use getDocumentation arguments for get_documentation. Inspect coverage for partial failures and stale sources. Does not compare historical versions or translate queries.",
+          "Search sections of current official documentation for a library from list_libraries with lexical keywords in the documentation's language. First call downloads and indexes all pages directly listed in the root catalog, or only path_prefix; this can take time. Uses the disk cache and updates changed sections by content hash. Nested catalogs are not expanded. Results include snippets and ready-to-use getDocumentation arguments for get_documentation. Inspect coverage for partial failures and stale sources. Does not compare historical versions or translate queries.",
         inputSchema: searchDocsInputSchema,
         outputSchema: searchDocsOutputSchema,
         annotations: {

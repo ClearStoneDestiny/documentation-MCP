@@ -50,6 +50,7 @@ for (const [name, mode] of [
           expect.objectContaining({ name: "search_docs" }),
           expect.objectContaining({ name: "list_versions" }),
           expect.objectContaining({ name: "list_libraries" }),
+          expect.objectContaining({ name: "get_code_examples" }),
         ]),
       );
 
@@ -96,7 +97,12 @@ for (const [name, mode] of [
             name: "Next.js",
             documentationUrl: "https://nextjs.org/docs/",
             capabilities: {
-              tools: ["get_documentation", "search_docs", "list_versions"],
+              tools: [
+                "get_documentation",
+                "search_docs",
+                "list_versions",
+                "get_code_examples",
+              ],
               historicalDocumentation: false,
             },
           },
@@ -111,6 +117,15 @@ for (const [name, mode] of [
         arguments: { filter: " " },
       });
       expect(invalidLibraries.isError).toBe(true);
+
+      const unsupportedVersion = await client.callTool({
+        name: "get_code_examples",
+        arguments: { library: "nextjs", query: "cache", version: "14" },
+      });
+      expect(unsupportedVersion.isError).toBe(true);
+      expect(JSON.parse(unsupportedVersion.content[0].text).code).toBe(
+        "VERSION_UNAVAILABLE",
+      );
       expect(errors, "stdout must contain only valid MCP messages").toEqual([]);
     },
   );

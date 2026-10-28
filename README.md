@@ -2,7 +2,7 @@
 
 A local, stdio-based MCP server for official, version-aware library and framework documentation.
 
-The project currently exposes `get_server_info`, `search_docs`, and `get_documentation` over stdio using Nest.js standalone and the official MCP TypeScript SDK v2. A Next.js source adapter, persistent disk cache, Markdown parser, and section index support searching current official documentation and retrieving matching sections with freshness metadata. Version selection, recursive catalog discovery, resources, and prompts are planned but not implemented yet.
+The project currently exposes `get_server_info`, `list_libraries`, `list_versions`, `search_docs`, `get_documentation`, and `get_code_examples` over stdio using Nest.js standalone and the official MCP TypeScript SDK v2. A Next.js source adapter, persistent disk cache, Markdown parser, and section index support searching current official documentation, retrieving matching sections, and extracting code examples with freshness metadata. Historical version selection, recursive catalog discovery, resources, and prompts are planned but not implemented yet.
 
 ## Requirements
 
@@ -58,6 +58,11 @@ src/
       file-cache.service.ts    # Validated reads and atomic JSON writes
       schemas/                 # Versioned storage records and response metadata
       tests/                   # Disk persistence and corruption checks
+    code-examples/
+      code-examples.module.ts  # Registry and parser dependencies
+      code-examples.service.ts # Extract, filter, and rank complete code blocks
+      schemas/                 # get_code_examples input/output contracts
+      tests/                   # Extraction, filtering, failures, and cancellation
     documentation/
       documentation.module.ts # Imports sources and exports documentation providers
       documentation.service.ts # Fetch, parse, select, and paginate documentation
@@ -73,6 +78,7 @@ src/
       tools/
         get-documentation.tool.ts # MCP registration and result/error mapping
         search-docs.tool.ts       # Search registration and indexing progress
+        get-code-examples.tool.ts # Code example registration and progress
       tests/
         stdio.unit.spec.mjs # Process-level protocol checks
     search/
@@ -137,7 +143,7 @@ node_modules/.bin/mcp-inspector --cli node dist/main.js \
   --tool-arg section_id=usage
 ```
 
-`get_server_info` reports `stage: "search"`. `McpModule` imports `DocumentationModule` and `SearchModule`; both use the source adapter and existing cache. Startup does not fetch documentation, build an index, or create cache files. Automated tests exercise the cache, parser, search, MCP SDK tool calls with mocked HTTP, and stdio discovery with both legacy and current protocol clients.
+`get_server_info` reports `stage: "search"`. `McpModule` imports `DocumentationModule`, `SearchModule`, `LibrariesModule`, and `CodeExamplesModule`; their tools share the source adapter and existing cache. Startup does not fetch documentation, build an index, or create cache files. Automated tests exercise the cache, parser, search, code extraction, MCP SDK tool calls with mocked HTTP, and stdio discovery with both legacy and current protocol clients.
 
 ## search_docs
 
@@ -188,6 +194,39 @@ node_modules/.bin/mcp-inspector --cli node dist/main.js \
   --tool-arg query=revalidation \
   --tool-arg path_prefix=app/getting-started/caching
 ```
+
+## get_code_examples
+
+Extract complete code blocks from current official documentation using lexical keywords in the code, section prose, headings, and page metadata. Code is returned from the source without generation or execution.
+
+```json
+{
+  "library": "nextjs",
+  "query": "revalidateTag",
+  "version": "current",
+  "filters": {
+    "languages": ["typescript", "tsx"],
+    "path_prefix": "app/api-reference/functions"
+  },
+  "limit": 5
+}
+```
+
+| Parameter | Meaning |
+| --- | --- |
+| `library` | Required; currently `nextjs`. Discover capabilities with `list_libraries`. |
+| `query` | Required lexical keywords, 1–256 characters; use documentation-language keywords and exact API names. |
+| `version` | Defaults to `current`, the only available documentation set. Historical versions, exact release numbers, and ranges return `VERSION_UNAVAILABLE` before downloading sources. |
+| `filters.languages` | Optional nonempty list of up to 10 fence languages, matched case-insensitively. `js`/`javascript` and `ts`/`typescript` are aliases; `jsx` and `tsx` remain distinct. Untagged blocks are included only when no language filter is set. |
+| `filters.path_prefix` | Optional exact page or subtree relative to `/docs`. Restricts downloads as well as results. |
+| `limit` | Number of code blocks to return, 1–20; defaults to 5. Filters apply before ranking and limiting. |
+| `refresh` | Defaults to `false`. Recheck the catalog and selected pages immediately. |
+
+The compact response has `libraryId`, `version`, `examples`, `totalMatches` before the limit, and `coverage`. Each example includes complete parsed `code`, optional fence `language`/`meta` (which may identify a filename), `sourceUrl`, `sectionTitle`, `fetchedAt`, optional cache metadata, and `getDocumentation`. Code is returned directly and only once per example; the response omits duplicate Markdown, source ranges, ranking scores, token lists, and repeated identifiers. Ranking still determines example order. `getDocumentation` is an optional next step when surrounding context is needed; its arguments retrieve the containing section with a hash check, detecting source changes between extraction and retrieval. Identical blocks at different source locations remain separate examples.
+
+Extraction considers fenced, tilde-fenced, and indented code blocks; empty blocks and inline code are excluded. Sibling code blocks do not become search context for one another. No matches is a successful response with an empty `examples` array. Blocks are returned whole; `limit` bounds their count, not their combined size.
+
+Like `search_docs`, discovery covers only pages directly listed in the root catalog. The first call loads all selected pages with at most four concurrent downloads; subsequent calls reuse the disk cache and rebuild a request-local example index. `coverage` reports indexed documents and examples, catalog-declared `docVersion` when present, stale sources, and partial source/parser failures. The catalog version is metadata from a mutable source, not an immutable revision or a verified compatibility range. If every selected page fails, the tool returns `INDEX_UNAVAILABLE`; catalog failures return `SOURCE_ERROR`. Requests support MCP progress notifications and cancellation.
 
 ## Disk cache and update checks
 

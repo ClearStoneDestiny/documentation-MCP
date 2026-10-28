@@ -18,7 +18,12 @@ export class LibraryRegistry {
         documentationUrl: NEXTJS_DOCS_BASE_URL,
 
         capabilities: {
-          tools: ["get_documentation", "search_docs", "list_versions"],
+          tools: [
+            "get_documentation",
+            "search_docs",
+            "list_versions",
+            "get_code_examples",
+          ],
           historicalDocumentation: false,
         },
 

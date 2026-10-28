@@ -7,7 +7,12 @@ const nextjsLibrary = {
   name: "Next.js",
   documentationUrl: "https://nextjs.org/docs/",
   capabilities: {
-    tools: ["get_documentation", "search_docs", "list_versions"],
+    tools: [
+      "get_documentation",
+      "search_docs",
+      "list_versions",
+      "get_code_examples",
+    ],
     historicalDocumentation: false,
   },
 };

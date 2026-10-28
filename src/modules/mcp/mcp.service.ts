@@ -15,6 +15,7 @@ import { GetDocumentationTool } from "./tools/get-documentation.tool.js";
 import { SearchDocsTool } from "./tools/search-docs.tool.js";
 import { ListVersionsTool } from "./tools/list-versions.tool.js";
 import { ListLibrariesTool } from "./tools/list-libraries.tool.js";
+import { GetCodeExamplesTool } from "./tools/get-code-examples.tool.js";
 
 const packageInfo = JSON.parse(
   readFileSync(new URL("../../../package.json", import.meta.url), "utf8"),
@@ -33,6 +34,8 @@ export class McpService implements OnModuleInit, OnModuleDestroy {
     private readonly listVersionsTool: ListVersionsTool,
     @Inject(ListLibrariesTool)
     private readonly listLibrariesTool: ListLibrariesTool,
+    @Inject(GetCodeExamplesTool)
+    private readonly getCodeExamplesTool: GetCodeExamplesTool,
   ) {}
 
   onModuleInit(): void {
@@ -88,6 +91,7 @@ export class McpService implements OnModuleInit, OnModuleDestroy {
     this.searchDocsTool.register(server);
     this.listVersionsTool.register(server);
     this.listLibrariesTool.register(server);
+    this.getCodeExamplesTool.register(server);
     return server;
   }
 }

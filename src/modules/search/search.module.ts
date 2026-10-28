@@ -1,10 +1,9 @@
 import { Module } from "@nestjs/common";
-import { DocumentationModule } from "../documentation/documentation.module.js";
 import { LibrariesModule } from "../libraries/libraries.module.js";
 import { SearchService } from "./search.service.js";
 
 @Module({
-  imports: [LibrariesModule, DocumentationModule],
+  imports: [LibrariesModule],
   providers: [SearchService],
   exports: [SearchService],
 })

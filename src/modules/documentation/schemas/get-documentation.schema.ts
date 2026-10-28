@@ -1,18 +1,12 @@
 import * as z from "zod/v4";
-import { NEXTJS_DOCUMENT_PATH_PATTERN } from "../../sources/constants/nextjs.constant.js";
+import { libraryIdSchema } from "../../libraries/schemas/library-id.schema.js";
+import { sourcePathSchema } from "../../sources/schemas/source-path.schema.js";
 import { cacheInfoSchema } from "../../cache/schemas/cache.schema.js";
 
 export const getDocumentationInputSchema = z
   .strictObject({
-    library: z.literal("nextjs").describe("Supported library: nextjs."),
-    path: z
-      .string()
-      .min(1)
-      .max(512)
-      .regex(NEXTJS_DOCUMENT_PATH_PATTERN)
-      .describe(
-        "Page path relative to /docs, e.g. app/getting-started/caching. No URL or .md suffix.",
-      ),
+    library: libraryIdSchema,
+    path: sourcePathSchema,
     section_id: z
       .string()
       .min(1)
@@ -58,7 +52,7 @@ export const getDocumentationInputSchema = z
   });
 
 export const getDocumentationOutputSchema = z.object({
-  libraryId: z.literal("nextjs"),
+  libraryId: libraryIdSchema,
   path: z.string(),
   sourceUrl: z.string(),
   title: z.string(),

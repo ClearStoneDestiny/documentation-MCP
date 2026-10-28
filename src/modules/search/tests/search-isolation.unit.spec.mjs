@@ -3,6 +3,8 @@ import { SearchService } from "../../../../dist/modules/search/search.service.js
 import { MarkdownDocumentParser } from "../../../../dist/modules/documentation/parsers/markdown-document.parser.js";
 import { LibraryRegistry } from "../../../../dist/modules/libraries/library-registry.service.js";
 import { createLibraryRegistration } from "../../../../dist/modules/libraries/utils/create-library-registration.util.js";
+import { DocumentPipelineRegistry } from "../../../../dist/modules/documentation/document-pipeline-registry.service.js";
+import { createMarkdownPipeline } from "../../../../dist/modules/documentation/pipelines/markdown.pipeline.js";
 
 const path = "guide/shared";
 const request = (library) => ({ library, query: "revalidation" });
@@ -22,6 +24,11 @@ function setup(identical = false) {
 
   const catalogs = {};
   const adapters = {};
+  const parser = new MarkdownDocumentParser();
+  vi.spyOn(parser, "parse");
+  const pipelines = new DocumentPipelineRegistry([
+    createMarkdownPipeline(parser),
+  ]);
 
   const registrations = Object.entries(contents).map(
     ([libraryId, documents]) => {
@@ -38,6 +45,7 @@ function setup(identical = false) {
 
       const adapter = {
         libraryId,
+        documentFormat: "markdown",
         isValidPath: () => true,
         fetchCatalog: vi.fn(async () => catalogs[libraryId]),
         fetchDocument: vi.fn(async (documentPath) => ({
@@ -62,15 +70,13 @@ function setup(identical = false) {
           adapter: class {},
         },
         adapter,
+        pipelines,
       );
     },
   );
 
-  const parser = new MarkdownDocumentParser();
-
-  vi.spyOn(parser, "parse");
   return {
-    service: new SearchService(new LibraryRegistry(registrations), parser),
+    service: new SearchService(new LibraryRegistry(registrations)),
     parser,
     contents,
     catalogs,

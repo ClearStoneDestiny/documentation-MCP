@@ -3,9 +3,7 @@ import { contentHash } from "../cache/utils/content-hash.util.js";
 import { DocumentationError } from "../documentation/errors/documentation.error.js";
 import type { IDocumentSection } from "../documentation/interfaces/document-section.interface.js";
 import type { IParsedDocument } from "../documentation/interfaces/parsed-document.interface.js";
-import { MarkdownDocumentParser } from "../documentation/parsers/markdown-document.parser.js";
 import { LibraryRegistry } from "../libraries/library-registry.service.js";
-import { SectionIndex } from "../search/section-index.js";
 import { queryTerms } from "../search/utils/tokenize.util.js";
 import {
   getCodeExamplesInputSchema,
@@ -19,8 +17,6 @@ import { retainSectionProse } from "./utils/retain-section-prose.util.js";
 export class CodeExamplesService {
   constructor(
     @Inject(LibraryRegistry) private readonly registry: LibraryRegistry,
-    @Inject(MarkdownDocumentParser)
-    private readonly parser: MarkdownDocumentParser,
   ) {}
 
   async getCodeExamples(
@@ -44,6 +40,15 @@ export class CodeExamplesService {
       throw new DocumentationError("INVALID_REQUEST", "Unsupported library.");
     }
 
+    const operation = registration.operations.get_code_examples;
+
+    if (!operation) {
+      throw new DocumentationError(
+        "TOOL_UNSUPPORTED",
+        `get_code_examples is not supported for library ${registration.id}.`,
+      );
+    }
+
     if (request.version !== "current") {
       throw new DocumentationError(
         "VERSION_UNAVAILABLE",
@@ -51,17 +56,16 @@ export class CodeExamplesService {
       );
     }
 
-    const adapter = registration.adapter;
     const prefix = request.filters?.path_prefix;
 
-    if (prefix && !adapter.isValidPath(prefix)) {
+    if (prefix && !operation.isValidPath(prefix)) {
       throw new DocumentationError(
         "INVALID_REQUEST",
         "Invalid documentation path prefix for this library.",
       );
     }
 
-    const catalog = await adapter
+    const catalog = await operation
       .fetchCatalog(signal, { refresh: request.refresh })
       .catch((cause: unknown) => {
         signal?.throwIfAborted();
@@ -95,14 +99,14 @@ export class CodeExamplesService {
         let code: "SOURCE_ERROR" | "PARSE_ERROR" = "SOURCE_ERROR";
 
         try {
-          const source = await adapter.fetchDocument(reference.path, signal, {
+          const source = await operation.fetchDocument(reference.path, signal, {
             refresh: request.refresh,
           });
 
           signal?.throwIfAborted();
 
           code = "PARSE_ERROR";
-          documents.set(reference.path, this.parser.parse(source));
+          documents.set(reference.path, operation.parse(source));
         } catch {
           signal?.throwIfAborted();
           failures.push({ path: reference.path, code });
@@ -133,7 +137,7 @@ export class CodeExamplesService {
       );
     }
 
-    const index = new SectionIndex();
+    const index = operation.createIndex();
 
     type TExample = TGetCodeExamplesResult["examples"][number];
     const examples = new Map<string, TExample>();

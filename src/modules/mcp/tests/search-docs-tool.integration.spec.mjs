@@ -7,7 +7,6 @@ import { InMemoryTransport, McpServer } from "@modelcontextprotocol/server";
 import { FileCacheService } from "../../../../dist/modules/cache/file-cache.service.js";
 import { CachedMarkdownService } from "../../../../dist/modules/sources/services/cached-markdown.service.js";
 import { NextjsAdapter } from "../../../../dist/modules/sources/adapters/nextjs.adapter.js";
-import { MarkdownDocumentParser } from "../../../../dist/modules/documentation/parsers/markdown-document.parser.js";
 import { DocumentationService } from "../../../../dist/modules/documentation/documentation.service.js";
 import { SearchService } from "../../../../dist/modules/search/search.service.js";
 import { SearchDocsTool } from "../../../../dist/modules/mcp/tools/search-docs.tool.js";
@@ -46,14 +45,11 @@ async function connect(cacheOptions) {
     ),
     nextjsSourceOptions,
   );
-  const parser = new MarkdownDocumentParser();
   const registry = createRegistry(adapter);
   const server = new McpServer({ name: "search-test", version: "1.0.0" });
 
-  new SearchDocsTool(new SearchService(registry, parser)).register(server);
-  new GetDocumentationTool(new DocumentationService(registry, parser)).register(
-    server,
-  );
+  new SearchDocsTool(new SearchService(registry)).register(server);
+  new GetDocumentationTool(new DocumentationService(registry)).register(server);
 
   const client = new Client({ name: "test-client", version: "1.0.0" });
 

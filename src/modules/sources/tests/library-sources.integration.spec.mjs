@@ -15,7 +15,6 @@ import {
 import { AppModule } from "../../../../dist/app.module.js";
 import { CodeExamplesService } from "../../../../dist/modules/code-examples/code-examples.service.js";
 import { DocumentationService } from "../../../../dist/modules/documentation/documentation.service.js";
-import { MarkdownDocumentParser } from "../../../../dist/modules/documentation/parsers/markdown-document.parser.js";
 import { LIBRARY_DEFINITIONS } from "../../../../dist/modules/libraries/constants/library-definitions.constant.js";
 import { LibraryRegistry } from "../../../../dist/modules/libraries/library-registry.service.js";
 import { LibraryService } from "../../../../dist/modules/libraries/library.service.js";
@@ -48,7 +47,6 @@ async function boot(sources) {
     providers: [
       LibraryRegistry,
       LibraryService,
-      MarkdownDocumentParser,
       DocumentationService,
       SearchService,
       VersionService,
@@ -84,6 +82,7 @@ function fixtureAdapter() {
   const instances = [];
 
   class Adapter {
+    documentFormat = "markdown";
     constructor(markdown, options) {
       this.markdown = markdown;
       this.options = options;
@@ -97,7 +96,9 @@ function fixtureAdapter() {
     async fetchDocument() {
       throw new Error("Not called during startup");
     }
-    isValidPath() { return true; }
+    isValidPath() {
+      return true;
+    }
   }
 
   Inject(CachedMarkdownService)(Adapter, undefined, 0);
@@ -143,6 +144,57 @@ test("Nest creates only enabled adapters and scopes options when libraries share
       ({ markdown }) => markdown instanceof CachedMarkdownService,
     ),
   ).toBe(true);
+  expect(fetch).not.toHaveBeenCalled();
+});
+
+test("Nest registers a document-only adapter without promising catalog-dependent tools", async () => {
+  class DirectAdapter {
+    documentFormat = "markdown";
+    constructor(options) {
+      this.libraryId = options.id;
+    }
+    isValidPath() {
+      return true;
+    }
+    async fetchDocument(path) {
+      return {
+        libraryId: this.libraryId,
+        path,
+        sourceUrl: `https://direct.example/${path}`,
+        content: "# Direct documentation",
+        format: "markdown",
+        fetchedAt: "2026-10-28T10:00:00.000Z",
+      };
+    }
+  }
+  Inject(LIBRARY_SOURCE_OPTIONS)(DirectAdapter, undefined, 0);
+  const app = await boot(
+    LibrarySourcesModule.register({
+      direct: {
+        enabled: true,
+        name: "Direct",
+        documentationUrl: "https://direct.example/",
+        sources: {},
+        adapter: DirectAdapter,
+      },
+    }),
+  );
+  expect(
+    app.get(LibraryService).listLibraries({}).libraries[0].capabilities,
+  ).toEqual({
+    tools: ["get_documentation"],
+    historicalDocumentation: false,
+  });
+  const document = await app
+    .get(DocumentationService)
+    .getDocumentation({ library: "direct", path: "guide/example" });
+  expect(document.content).toBe("# Direct documentation");
+  await expect(
+    app.get(SearchService).searchDocs({ library: "direct", query: "refresh" }),
+  ).rejects.toMatchObject({ code: "TOOL_UNSUPPORTED" });
+  await expect(
+    app.get(VersionService).listVersion({ library: "direct" }),
+  ).rejects.toMatchObject({ code: "TOOL_UNSUPPORTED" });
   expect(fetch).not.toHaveBeenCalled();
 });
 

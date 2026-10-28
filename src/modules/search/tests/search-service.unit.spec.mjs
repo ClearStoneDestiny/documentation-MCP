@@ -28,6 +28,7 @@ function setup(
 
   const adapter = {
     libraryId: "nextjs",
+    documentFormat: "markdown",
     isValidPath: vi.fn(() => true),
     fetchCatalog: vi.fn(async () => catalog),
     fetchDocument: vi.fn(async (path) => ({
@@ -44,7 +45,7 @@ function setup(
 
   vi.spyOn(parser, "parse");
   return {
-    service: new SearchService(createRegistry(adapter), parser),
+    service: new SearchService(createRegistry(adapter, undefined, parser)),
     adapter,
     parser,
     contents,

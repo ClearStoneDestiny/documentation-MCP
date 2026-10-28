@@ -14,6 +14,7 @@ function setup() {
   };
   const adapter = {
     libraryId: "nextjs",
+    documentFormat: "markdown",
     documentationUrl: "https://nextjs.org/docs/",
     fetchCatalog: vi.fn().mockResolvedValue(catalog),
     fetchDocument: vi.fn(),

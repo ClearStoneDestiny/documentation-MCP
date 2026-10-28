@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { Inject, Injectable } from "@nestjs/common";
 import { LibraryRegistry } from "../libraries/library-registry.service.js";
 import { DocumentationError } from "./errors/documentation.error.js";
-import { MarkdownDocumentParser } from "./parsers/markdown-document.parser.js";
 import type { IParsedDocument } from "./interfaces/parsed-document.interface.js";
 import {
   getDocumentationInputSchema,
@@ -14,8 +13,6 @@ import {
 export class DocumentationService {
   constructor(
     @Inject(LibraryRegistry) private readonly registry: LibraryRegistry,
-    @Inject(MarkdownDocumentParser)
-    private readonly parser: MarkdownDocumentParser,
   ) {}
 
   async getDocumentation(
@@ -38,16 +35,23 @@ export class DocumentationService {
       throw new DocumentationError("INVALID_REQUEST", "Unsupported library.");
     }
 
-    const adapter = registration.adapter;
+    const operation = registration.operations.get_documentation;
 
-    if (!adapter.isValidPath(request.path)) {
+    if (!operation) {
+      throw new DocumentationError(
+        "TOOL_UNSUPPORTED",
+        `get_documentation is not supported for library ${registration.id}.`,
+      );
+    }
+
+    if (!operation.isValidPath(request.path)) {
       throw new DocumentationError(
         "INVALID_REQUEST",
         "Invalid documentation path for this library.",
       );
     }
 
-    const source = await adapter
+    const source = await operation
       .fetchDocument(request.path, signal, { refresh: request.refresh })
       .catch((cause: unknown) => {
         signal?.throwIfAborted();
@@ -74,7 +78,7 @@ export class DocumentationService {
     let document: IParsedDocument;
 
     try {
-      document = this.parser.parse(source);
+      document = operation.parse(source);
     } catch (cause) {
       throw new DocumentationError(
         "PARSE_ERROR",

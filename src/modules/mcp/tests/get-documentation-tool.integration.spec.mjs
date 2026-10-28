@@ -6,7 +6,6 @@ import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 import { Client } from "@modelcontextprotocol/client";
 import { InMemoryTransport, McpServer } from "@modelcontextprotocol/server";
 import { DocumentationService } from "../../../../dist/modules/documentation/documentation.service.js";
-import { MarkdownDocumentParser } from "../../../../dist/modules/documentation/parsers/markdown-document.parser.js";
 import { NextjsAdapter } from "../../../../dist/modules/sources/adapters/nextjs.adapter.js";
 import { GetDocumentationTool } from "../../../../dist/modules/mcp/tools/get-documentation.tool.js";
 import { FileCacheService } from "../../../../dist/modules/cache/file-cache.service.js";
@@ -36,7 +35,6 @@ async function connect(
         nextjsSourceOptions,
       ),
     ),
-    new MarkdownDocumentParser(),
   );
   const server = new McpServer({
     name: "documentation-test",

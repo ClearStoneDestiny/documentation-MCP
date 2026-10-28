@@ -1,5 +1,6 @@
 export type TDocumentationErrorCode =
   | "INVALID_REQUEST"
+  | "TOOL_UNSUPPORTED"
   | "VERSION_UNAVAILABLE"
   | "INDEX_UNAVAILABLE"
   | "SOURCE_ERROR"

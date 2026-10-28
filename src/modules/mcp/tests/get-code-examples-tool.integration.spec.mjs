@@ -7,7 +7,6 @@ import { InMemoryTransport, McpServer } from "@modelcontextprotocol/server";
 import { FileCacheService } from "../../../../dist/modules/cache/file-cache.service.js";
 import { CodeExamplesService } from "../../../../dist/modules/code-examples/code-examples.service.js";
 import { DocumentationService } from "../../../../dist/modules/documentation/documentation.service.js";
-import { MarkdownDocumentParser } from "../../../../dist/modules/documentation/parsers/markdown-document.parser.js";
 import { GetCodeExamplesTool } from "../../../../dist/modules/mcp/tools/get-code-examples.tool.js";
 import { GetDocumentationTool } from "../../../../dist/modules/mcp/tools/get-documentation.tool.js";
 import { NextjsAdapter } from "../../../../dist/modules/sources/adapters/nextjs.adapter.js";
@@ -57,15 +56,13 @@ async function connect(options, service) {
     nextjsSourceOptions,
   );
 
-  const parser = new MarkdownDocumentParser();
+  const registry = createRegistry(adapter);
   const server = new McpServer({ name: "examples-test", version: "1.0.0" });
 
   new GetCodeExamplesTool(
-    service ?? new CodeExamplesService(createRegistry(adapter), parser),
+    service ?? new CodeExamplesService(registry),
   ).register(server);
-  new GetDocumentationTool(
-    new DocumentationService(createRegistry(adapter), parser),
-  ).register(server);
+  new GetDocumentationTool(new DocumentationService(registry)).register(server);
 
   const client = new Client({ name: "test-client", version: "1.0.0" });
 

@@ -1,7 +1,6 @@
 import { expect, test, vi } from "vitest";
 import { CodeExamplesService } from "../../../../dist/modules/code-examples/code-examples.service.js";
 import { getCodeExamplesOutputSchema } from "../../../../dist/modules/code-examples/schemas/get-code-examples.schema.js";
-import { MarkdownDocumentParser } from "../../../../dist/modules/documentation/parsers/markdown-document.parser.js";
 import { createRegistry } from "../../libraries/tests/fixtures/library.fixture.mjs";
 
 const request = { library: "nextjs", query: "revalidateTag" };
@@ -48,6 +47,7 @@ function setup(
 
   const adapter = {
     libraryId: "nextjs",
+    documentFormat: "markdown",
     isValidPath: vi.fn(() => true),
     fetchCatalog: vi.fn(async () => catalog),
     fetchDocument: vi.fn(async (path) => ({
@@ -64,10 +64,7 @@ function setup(
     adapter,
     catalog,
     contents,
-    service: new CodeExamplesService(
-      createRegistry(adapter),
-      new MarkdownDocumentParser(),
-    ),
+    service: new CodeExamplesService(createRegistry(adapter)),
   };
 }
 

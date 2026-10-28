@@ -11,6 +11,8 @@ import { createLibraryRegistration } from "../libraries/utils/create-library-reg
 import { LIBRARY_SOURCE_OPTIONS } from "./constants/library-source-options.constant.js";
 import type { ISourceAdapter } from "./interfaces/source-adapter.interface.js";
 import { CachedMarkdownService } from "./services/cached-markdown.service.js";
+import { DocumentProcessingModule } from "../documentation/document-processing.module.js";
+import { DocumentPipelineRegistry } from "../documentation/document-pipeline-registry.service.js";
 
 // Separate scopes let multiple libraries use the same adapter class with
 // different options. Nest constructs the adapters and injects their dependencies
@@ -76,15 +78,26 @@ export class LibrarySourcesModule {
 
     return {
       module: LibrarySourcesModule,
-      imports,
+      imports: [...imports, DocumentProcessingModule],
       providers: [
         {
           provide: LIBRARY_REGISTRATIONS,
-          inject: enabled.map(({ token }) => token),
-          useFactory: (...adapters: ISourceAdapter[]) =>
+          inject: [
+            DocumentPipelineRegistry,
+            ...enabled.map(({ token }) => token),
+          ],
+          useFactory: (
+            pipelines: DocumentPipelineRegistry,
+            ...adapters: ISourceAdapter[]
+          ) =>
             Object.freeze(
               enabled.map(({ id, definition }, index) =>
-                createLibraryRegistration(id, definition, adapters[index]!),
+                createLibraryRegistration(
+                  id,
+                  definition,
+                  adapters[index]!,
+                  pipelines,
+                ),
               ),
             ),
         },

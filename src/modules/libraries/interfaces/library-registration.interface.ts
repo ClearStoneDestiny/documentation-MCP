@@ -1,6 +1,7 @@
 import { ISourceAdapter } from "../../sources/interfaces/source-adapter.interface.js";
 import { TLibraryId } from "./library-id.type.js";
 import { TLibraryToolName } from "./library-tool-name.type.js";
+import type { ILibraryOperations } from "./library-operations.interface.js";
 
 export interface ILibraryRegistration {
   readonly id: TLibraryId;
@@ -13,4 +14,5 @@ export interface ILibraryRegistration {
   };
 
   readonly adapter: ISourceAdapter;
+  readonly operations: ILibraryOperations;
 }

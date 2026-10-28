@@ -1,11 +1,14 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { FileCacheService } from "../../cache/file-cache.service.js";
-import type {
-  TCacheEntry,
-  TCacheInfo,
+import {
+  cacheScopeSchema,
+  type TCacheEntry,
+  type TCacheInfo,
 } from "../../cache/schemas/cache.schema.js";
 import type { ISourceFetchOptions } from "../interfaces/source-fetch-options.interface.js";
 import { contentHash } from "../../cache/utils/content-hash.util.js";
+import { CACHE_SCOPE } from "../../cache/constants/cache-scope.constant.js";
+import type { IDocumentationScope } from "../../libraries/interfaces/documentation-scope.interface.js";
 
 class SourceHttpError extends Error {
   constructor(
@@ -24,9 +27,14 @@ interface IMarkdownResponse {
 
 @Injectable()
 export class CachedMarkdownService {
+  private readonly scope: IDocumentationScope;
+
   constructor(
     @Inject(FileCacheService) private readonly store: FileCacheService,
-  ) {}
+    @Inject(CACHE_SCOPE) scope: IDocumentationScope,
+  ) {
+    this.scope = Object.freeze(cacheScopeSchema.parse(scope));
+  }
 
   async load(
     url: string,
@@ -35,7 +43,8 @@ export class CachedMarkdownService {
   ): Promise<IMarkdownResponse> {
     signal?.throwIfAborted();
 
-    const cached = await this.store.read(url);
+    const key = { ...this.scope, url };
+    const cached = await this.store.read(key);
 
     signal?.throwIfAborted();
 
@@ -91,7 +100,7 @@ export class CachedMarkdownService {
             ?.toLowerCase()
             .includes("no-store")
         ) {
-          await this.store.remove(url);
+          await this.store.remove(key);
           return this.result(entry, "disabled", false);
         }
         return this.save(entry, "revalidated");
@@ -99,7 +108,7 @@ export class CachedMarkdownService {
 
       if (!response.ok) {
         if (response.status === 404 || response.status === 410) {
-          await this.store.remove(url);
+          await this.store.remove(key);
         }
 
         throw new SourceHttpError(
@@ -132,8 +141,8 @@ export class CachedMarkdownService {
       }
 
       const entry: TCacheEntry = {
-        schemaVersion: 1,
-        url,
+        schemaVersion: 2,
+        ...key,
         content,
         contentHash: contentHash(content),
         fetchedAt: now,
@@ -152,7 +161,7 @@ export class CachedMarkdownService {
           ?.toLowerCase()
           .includes("no-store")
       ) {
-        await this.store.remove(url);
+        await this.store.remove(key);
         return this.result(entry, "disabled", false);
       }
       return this.save(

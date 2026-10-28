@@ -106,6 +106,10 @@ function createRangeReader(
 @Injectable()
 export class MarkdownDocumentParser {
   parse(source: ISourceDocument): IParsedDocument {
+    if (source.format !== "markdown") {
+      throw new Error(`Unsupported documentation format: ${source.format}`);
+    }
+    
     const tree = markdownParser.parse(source.content);
     const metadata = readMetadata(tree, source.sourceUrl);
 

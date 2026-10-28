@@ -8,6 +8,8 @@ import { parseNextjsCatalog } from "../parsers/nextjs-catalog.parser.js";
 import { LIBRARY_SOURCE_OPTIONS } from "../constants/library-source-options.constant.js";
 import type { ILibrarySourceOptions } from "../interfaces/library-source-options.interface.js";
 import { NEXTJS_DOCUMENT_PATH_PATTERN } from "../constants/nextjs.constant.js";
+import { CURRENT_DOCUMENTATION_SET_ID } from "../../libraries/constants/documentation-set.constant.js";
+import type { ISourceDocumentationSets } from "../interfaces/source-documentation-sets.interface.js";
 
 @Injectable()
 export class NextjsAdapter implements ISourceAdapter {
@@ -15,6 +17,7 @@ export class NextjsAdapter implements ISourceAdapter {
   readonly libraryId: string;
   readonly documentationUrl: string;
   private readonly catalogUrl: string;
+  private readonly name: string;
 
   constructor(
     @Inject(CachedMarkdownService)
@@ -29,10 +32,37 @@ export class NextjsAdapter implements ISourceAdapter {
     this.libraryId = source.id;
     this.documentationUrl = source.documentationUrl;
     this.catalogUrl = source.sources.catalog.url;
+    this.name = source.name;
   }
 
   isValidPath(path: string): boolean {
     return NEXTJS_DOCUMENT_PATH_PATTERN.test(path);
+  }
+
+  async listDocumentationSets(
+    signal?: AbortSignal,
+    options?: ISourceFetchOptions,
+  ): Promise<ISourceDocumentationSets> {
+    const catalog = await this.fetchCatalog(signal, options);
+    signal?.throwIfAborted();
+
+    return {
+      documentationSets: [
+        {
+          id: CURRENT_DOCUMENTATION_SET_ID,
+          label: `Current ${this.name} documentation`,
+          channel: "current",
+          declaredVersion: catalog.docVersion ?? null,
+          versionRange: null,
+          sourceUrl: this.documentationUrl,
+        },
+      ],
+      catalog: {
+        sourceUrl: catalog.sourceUrl,
+        fetchedAt: catalog.fetchedAt,
+        ...(catalog.cache ? { cache: catalog.cache } : {}),
+      },
+    };
   }
 
   async fetchCatalog(

@@ -1,5 +1,7 @@
 import { Module, type DynamicModule } from "@nestjs/common";
 import { CacheModule } from "../cache/cache.module.js";
+import { CACHE_SCOPE } from "../cache/constants/cache-scope.constant.js";
+import { CURRENT_DOCUMENTATION_SET_ID } from "../libraries/constants/documentation-set.constant.js";
 import type { TLibraryDefinitions } from "../libraries/constants/library-definitions.constant.js";
 import { LIBRARY_REGISTRATIONS } from "../libraries/constants/library-registrations.constant.js";
 import { LIBRARY_ID_PATTERN } from "../libraries/constants/library.constant.js";
@@ -24,6 +26,13 @@ class LibrarySourceModule {
       imports: [CacheModule],
       providers: [
         CachedMarkdownService,
+        {
+          provide: CACHE_SCOPE,
+          useValue: Object.freeze({
+            libraryId: id,
+            documentationSetId: CURRENT_DOCUMENTATION_SET_ID,
+          }),
+        },
         {
           provide: LIBRARY_SOURCE_OPTIONS,
           useValue: Object.freeze({
@@ -58,9 +67,7 @@ export class LibrarySourcesModule {
             : {}),
         }),
       });
-      return [
-        { id, definition: snapshot, token: Symbol(id) },
-      ];
+      return [{ id, definition: snapshot, token: Symbol(id) }];
     });
 
     const imports = enabled.map(({ id, definition, token }) =>

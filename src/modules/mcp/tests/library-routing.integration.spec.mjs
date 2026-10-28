@@ -13,7 +13,6 @@ import {
 } from "vitest";
 import { CodeExamplesService } from "../../../../dist/modules/code-examples/code-examples.service.js";
 import { DocumentationService } from "../../../../dist/modules/documentation/documentation.service.js";
-import { MarkdownDocumentParser } from "../../../../dist/modules/documentation/parsers/markdown-document.parser.js";
 import { LibraryRegistry } from "../../../../dist/modules/libraries/library-registry.service.js";
 import { LibraryService } from "../../../../dist/modules/libraries/library.service.js";
 import { VersionService } from "../../../../dist/modules/libraries/version.service.js";
@@ -39,6 +38,7 @@ const tools = [
 class FixtureAdapter {
   constructor(options) {
     this.libraryId = options.id;
+    this.documentFormat = "markdown";
     this.isValidPath = vi.fn(
       (value) => value === "guide" || /^guide\/[a-z0-9.-]+\.md$/.test(value),
     );
@@ -116,7 +116,6 @@ async function connect() {
     providers: [
       LibraryRegistry,
       LibraryService,
-      MarkdownDocumentParser,
       DocumentationService,
       SearchService,
       VersionService,

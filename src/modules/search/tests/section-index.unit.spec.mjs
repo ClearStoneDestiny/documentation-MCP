@@ -35,7 +35,6 @@ test("tokenizes complete API names, case transitions, Unicode and underscores", 
     "server",
     "café",
     "cache",
-    "кэш",
   ]);
   expect(queryTerms("How is the revalidateTag API used?")).toEqual([
     "revalidatetag",

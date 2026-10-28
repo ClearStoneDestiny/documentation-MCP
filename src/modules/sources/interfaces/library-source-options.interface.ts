@@ -1,5 +1,6 @@
 export interface ILibrarySourceOptions {
   readonly id: string;
+  readonly name: string;
   readonly documentationUrl: string;
   readonly sources: {
     readonly catalog?: {

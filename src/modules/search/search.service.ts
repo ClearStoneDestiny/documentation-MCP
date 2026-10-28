@@ -1,4 +1,4 @@
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable, Optional } from "@nestjs/common";
 import { contentHash } from "../cache/utils/content-hash.util.js";
 import { MarkdownDocumentParser } from "../documentation/parsers/markdown-document.parser.js";
 import { NextjsAdapter } from "../sources/adapters/nextjs.adapter.js";
@@ -21,7 +21,9 @@ export class SearchService {
   private pending: Promise<void> = Promise.resolve();
 
   constructor(
-    @Inject(NextjsAdapter) private readonly nextjs: NextjsAdapter,
+    @Optional()
+    @Inject(NextjsAdapter)
+    private readonly nextjs: NextjsAdapter | undefined,
     @Inject(MarkdownDocumentParser)
     private readonly parser: MarkdownDocumentParser,
   ) {}
@@ -39,8 +41,14 @@ export class SearchService {
 
     signal?.throwIfAborted();
 
+    const adapter = this.nextjs;
+
+    if (!adapter || adapter.libraryId !== validation.data.library) {
+      throw new SearchError("INVALID_REQUEST", "Unsupported library.");
+    }
+
     const task = this.pending.then(() =>
-      this.synchronizeAndSearch(validation.data, signal, onProgress),
+      this.synchronizeAndSearch(validation.data, adapter, signal, onProgress),
     );
     this.pending = task.then(
       () => {},
@@ -68,12 +76,13 @@ export class SearchService {
 
   private async synchronizeAndSearch(
     request: ReturnType<typeof searchDocsInputSchema.parse>,
+    adapter: NextjsAdapter,
     signal?: AbortSignal,
     onProgress?: (completed: number, total: number) => Promise<void>,
   ): Promise<TSearchDocsResult> {
     signal?.throwIfAborted();
 
-    const catalog = await this.nextjs
+    const catalog = await adapter
       .fetchCatalog(signal, { refresh: request.refresh })
       .catch((cause: unknown) => {
         signal?.throwIfAborted();
@@ -118,13 +127,9 @@ export class SearchService {
         let code: "SOURCE_ERROR" | "PARSE_ERROR" = "SOURCE_ERROR";
 
         try {
-          const source = await this.nextjs.fetchDocument(
-            reference.path,
-            signal,
-            {
-              refresh: request.refresh,
-            },
-          );
+          const source = await adapter.fetchDocument(reference.path, signal, {
+            refresh: request.refresh,
+          });
 
           signal?.throwIfAborted();
 

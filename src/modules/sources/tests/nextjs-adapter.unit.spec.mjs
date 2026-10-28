@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { NextjsAdapter } from "../../../../dist/modules/sources/adapters/nextjs.adapter.js";
 import { CachedMarkdownService } from "../../../../dist/modules/sources/services/cached-markdown.service.js";
 import { FileCacheService } from "../../../../dist/modules/cache/file-cache.service.js";
+import { nextjsSourceOptions } from "../../libraries/tests/fixtures/library.fixture.mjs";
 
 function createAdapter() {
   const store = new FileCacheService({
@@ -10,7 +11,11 @@ function createAdapter() {
     ttlMs: 0,
     enabled: false,
   });
-  return new NextjsAdapter(new CachedMarkdownService(store));
+
+  return new NextjsAdapter(
+    new CachedMarkdownService(store),
+    nextjsSourceOptions,
+  );
 }
 
 const path = "app/getting-started/caching";

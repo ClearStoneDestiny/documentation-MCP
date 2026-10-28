@@ -9,6 +9,7 @@ import { VersionService } from "../../../../dist/modules/libraries/version.servi
 import { ListVersionsTool } from "../../../../dist/modules/mcp/tools/list-versions.tool.js";
 import { NextjsAdapter } from "../../../../dist/modules/sources/adapters/nextjs.adapter.js";
 import { CachedMarkdownService } from "../../../../dist/modules/sources/services/cached-markdown.service.js";
+import { nextjsSourceOptions } from "../../libraries/tests/fixtures/library.fixture.mjs";
 
 const catalogUrl = "https://nextjs.org/docs/llms.txt";
 const catalog =
@@ -22,6 +23,7 @@ async function connect(
 ) {
   const adapter = new NextjsAdapter(
     new CachedMarkdownService(new FileCacheService(cacheOptions)),
+    nextjsSourceOptions,
   );
   const server = new McpServer({ name: "versions-test", version: "1.0.0" });
 
@@ -128,7 +130,7 @@ test("discovers portable nullable schemas and returns matching structured and te
 
 test("returns an explicit null when the catalog does not declare a version", async () => {
   mockCatalog(catalog.replace("@doc-version: 99.1.0", ""));
-  
+
   const client = await connect();
   const result = await client.callTool({
     name: "list_versions",
@@ -213,7 +215,7 @@ test("reuses the catalog across MCP clients and conditionally revalidates on ref
   expect(fetchMock).toHaveBeenCalledTimes(1);
 
   fetchMock.mockResolvedValueOnce(new Response(null, { status: 304 }));
-  
+
   const refreshed = (
     await client.callTool({
       name: "list_versions",
@@ -231,9 +233,9 @@ test("reuses the catalog across MCP clients and conditionally revalidates on ref
 test("refresh updates the declared version and saves the new catalog", async () => {
   const fetchMock = mockCatalog();
   const client = await connect(await persistentCache());
-  
+
   await client.callTool({ name: "list_versions", arguments: request });
-  
+
   fetchMock.mockImplementation(
     async () =>
       new Response(catalog.replace("99.1.0", "99.2.0"), {
@@ -247,14 +249,14 @@ test("refresh updates the declared version and saves the new catalog", async () 
       arguments: { ...request, refresh: true },
     })
   ).structuredContent;
- 
+
   expect(refreshed.documentationSets[0].declaredVersion).toBe("99.2.0");
   expect(refreshed.catalog.cache.status).toBe("updated");
 
   const saved = (
     await client.callTool({ name: "list_versions", arguments: request })
   ).structuredContent;
-  
+
   expect(saved.documentationSets).toEqual(refreshed.documentationSets);
   expect(saved.catalog.cache.status).toBe("hit");
   expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -262,7 +264,7 @@ test("refresh updates the declared version and saves the new catalog", async () 
 
 test("returns the saved catalog with a stale warning when the source is offline", async () => {
   const fetchMock = mockCatalog();
- 
+
   const client = await connect(await persistentCache(0));
   const first = (
     await client.callTool({ name: "list_versions", arguments: request })
@@ -294,7 +296,7 @@ test("propagates MCP cancellation to the catalog request", async () => {
   const started = new Promise((resolve) => {
     markStarted = resolve;
   });
-  
+
   vi.stubGlobal(
     "fetch",
     vi.fn((_url, { signal }) => {
@@ -306,7 +308,7 @@ test("propagates MCP cancellation to the catalog request", async () => {
       });
     }),
   );
- 
+
   const client = await connect();
   const controller = new AbortController();
   const pending = client.callTool(
@@ -315,7 +317,7 @@ test("propagates MCP cancellation to the catalog request", async () => {
   );
   const assertion = expect(pending).rejects.toThrow();
   const sourceSignal = await started;
-  
+
   controller.abort(new Error("Stop listing versions"));
 
   await assertion;

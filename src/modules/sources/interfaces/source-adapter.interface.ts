@@ -1,11 +1,17 @@
 import type { ISourceDocument } from "./source-document.interface.js";
 import type { ISourceCatalog } from "./source-catalog.interface.js";
 import type { ISourceFetchOptions } from "./source-fetch-options.interface.js";
+import type { ISourceDocumentationSets } from "./source-documentation-sets.interface.js";
 
 export interface ISourceAdapter {
   readonly libraryId: string;
   // Format returned by fetchDocument, after any adapter-specific conversion
   readonly documentFormat?: string;
+  // Independent of catalog/page discovery and package-release enumeration
+  listDocumentationSets?(
+    signal?: AbortSignal,
+    options?: ISourceFetchOptions,
+  ): Promise<ISourceDocumentationSets>;
   // Syntax rules for document paths and subtree prefixes, not page existence
   isValidPath?(path: string): boolean;
   // Optional discovery returns a normalized catalog, not raw source markup

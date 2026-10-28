@@ -1,4 +1,4 @@
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable, Optional } from "@nestjs/common";
 import { NextjsAdapter } from "../sources/adapters/nextjs.adapter.js";
 import {
   listVersionsInputSchema,
@@ -7,11 +7,14 @@ import {
 } from "./schemas/list-versions.schema.js";
 import { DocumentationError } from "../documentation/errors/documentation.error.js";
 import { ISourceCatalog } from "../sources/interfaces/source-catalog.interface.js";
-import { NEXTJS_DOCS_BASE_URL } from "../sources/constants/nextjs.constant.js";
 
 @Injectable()
 export class VersionService {
-  constructor(@Inject(NextjsAdapter) private readonly nextjs: NextjsAdapter) {}
+  constructor(
+    @Optional()
+    @Inject(NextjsAdapter)
+    private readonly nextjs: NextjsAdapter | undefined,
+  ) {}
 
   async listVersion(
     input: TListVersionsInput,
@@ -26,6 +29,10 @@ export class VersionService {
     const request = validation.data;
 
     signal?.throwIfAborted();
+
+    if (!this.nextjs || this.nextjs.libraryId !== request.library) {
+      throw new DocumentationError("INVALID_REQUEST", "Unsupported library.");
+    }
 
     let catalog: ISourceCatalog;
 
@@ -53,7 +60,7 @@ export class VersionService {
           channel: "current",
           declaredVersion: catalog.docVersion ?? null,
           versionRange: null,
-          sourceUrl: NEXTJS_DOCS_BASE_URL,
+          sourceUrl: this.nextjs.documentationUrl,
         },
       ],
 

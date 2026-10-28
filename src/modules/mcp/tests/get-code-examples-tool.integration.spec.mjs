@@ -8,11 +8,14 @@ import { FileCacheService } from "../../../../dist/modules/cache/file-cache.serv
 import { CodeExamplesService } from "../../../../dist/modules/code-examples/code-examples.service.js";
 import { DocumentationService } from "../../../../dist/modules/documentation/documentation.service.js";
 import { MarkdownDocumentParser } from "../../../../dist/modules/documentation/parsers/markdown-document.parser.js";
-import { LibraryRegistry } from "../../../../dist/modules/libraries/library-registry.service.js";
 import { GetCodeExamplesTool } from "../../../../dist/modules/mcp/tools/get-code-examples.tool.js";
 import { GetDocumentationTool } from "../../../../dist/modules/mcp/tools/get-documentation.tool.js";
 import { NextjsAdapter } from "../../../../dist/modules/sources/adapters/nextjs.adapter.js";
 import { CachedMarkdownService } from "../../../../dist/modules/sources/services/cached-markdown.service.js";
+import {
+  createRegistry,
+  nextjsSourceOptions,
+} from "../../libraries/tests/fixtures/library.fixture.mjs";
 
 const catalogUrl = "https://nextjs.org/docs/llms.txt";
 const path = "app/guides/caching";
@@ -49,13 +52,14 @@ async function connect(options, service) {
         },
       ),
     ),
+    nextjsSourceOptions,
   );
 
   const parser = new MarkdownDocumentParser();
   const server = new McpServer({ name: "examples-test", version: "1.0.0" });
 
   new GetCodeExamplesTool(
-    service ?? new CodeExamplesService(new LibraryRegistry(adapter), parser),
+    service ?? new CodeExamplesService(createRegistry(adapter), parser),
   ).register(server);
   new GetDocumentationTool(new DocumentationService(adapter, parser)).register(
     server,

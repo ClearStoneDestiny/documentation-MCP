@@ -7,16 +7,17 @@ import type { ISourceDocumentReference } from "../interfaces/source-document-ref
 
 function resolveDocumentUrl(
   href: string,
+  documentationUrl: string,
 ): Pick<ISourceDocumentReference, "path" | "sourceUrl"> | undefined {
   let url: URL;
 
   try {
-    url = new URL(href, NEXTJS_DOCS_BASE_URL);
+    url = new URL(href, documentationUrl);
   } catch {
     return undefined;
   }
 
-  const base = new URL(NEXTJS_DOCS_BASE_URL);
+  const base = new URL(documentationUrl);
 
   if (
     url.origin !== base.origin ||
@@ -43,6 +44,7 @@ function resolveDocumentUrl(
 // Parse the link-list format used by Next.js llms.txt, not document Markdown
 export function parseNextjsCatalog(
   content: string,
+  documentationUrl = NEXTJS_DOCS_BASE_URL,
 ): Pick<ISourceCatalog, "documents" | "docVersion"> {
   const documents: ISourceDocumentReference[] = [];
   const seen = new Set<string>();
@@ -91,7 +93,7 @@ export function parseNextjsCatalog(
       continue;
     }
 
-    const reference = resolveDocumentUrl(link[2]);
+    const reference = resolveDocumentUrl(link[2], documentationUrl);
 
     if (!reference || seen.has(reference.path)) {
       continue;

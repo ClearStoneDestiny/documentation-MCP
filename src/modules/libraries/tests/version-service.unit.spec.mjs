@@ -11,7 +11,11 @@ function setup() {
     docVersion: "99.1.0",
     documents: [],
   };
-  const adapter = { fetchCatalog: vi.fn().mockResolvedValue(catalog) };
+  const adapter = {
+    libraryId: "nextjs",
+    documentationUrl: "https://nextjs.org/docs/",
+    fetchCatalog: vi.fn().mockResolvedValue(catalog),
+  };
   return { catalog, adapter, service: new VersionService(adapter) };
 }
 

@@ -5,36 +5,46 @@ import type { ISourceCatalog } from "../interfaces/source-catalog.interface.js";
 import type { ISourceFetchOptions } from "../interfaces/source-fetch-options.interface.js";
 import { CachedMarkdownService } from "../services/cached-markdown.service.js";
 import { parseNextjsCatalog } from "../parsers/nextjs-catalog.parser.js";
-import {
-  NEXTJS_CATALOG_URL,
-  NEXTJS_DOCS_BASE_URL,
-  NEXTJS_DOCUMENT_PATH_PATTERN,
-} from "../constants/nextjs.constant.js";
+import { LIBRARY_SOURCE_OPTIONS } from "../constants/library-source-options.constant.js";
+import type { ILibrarySourceOptions } from "../interfaces/library-source-options.interface.js";
+import { NEXTJS_DOCUMENT_PATH_PATTERN } from "../constants/nextjs.constant.js";
 
 @Injectable()
 export class NextjsAdapter implements ISourceAdapter {
-  readonly libraryId = "nextjs";
+  readonly libraryId: string;
+  readonly documentationUrl: string;
+  private readonly catalogUrl: string;
 
   constructor(
     @Inject(CachedMarkdownService)
     private readonly markdown: CachedMarkdownService,
-  ) {}
+    @Inject(LIBRARY_SOURCE_OPTIONS)
+    source: ILibrarySourceOptions,
+  ) {
+    if (source.sources.catalog?.format !== "llms-txt") {
+      throw new Error("NextjsAdapter requires an llms-txt catalog source.");
+    }
+    
+    this.libraryId = source.id;
+    this.documentationUrl = source.documentationUrl;
+    this.catalogUrl = source.sources.catalog.url;
+  }
 
   async fetchCatalog(
     signal?: AbortSignal,
     options?: ISourceFetchOptions,
   ): Promise<ISourceCatalog> {
     const response = await this.markdown.load(
-      NEXTJS_CATALOG_URL,
+      this.catalogUrl,
       signal,
       options,
     );
     return {
       libraryId: this.libraryId,
-      sourceUrl: NEXTJS_CATALOG_URL,
+      sourceUrl: this.catalogUrl,
       fetchedAt: response.fetchedAt,
       cache: response.cache,
-      ...parseNextjsCatalog(response.content),
+      ...parseNextjsCatalog(response.content, this.documentationUrl),
     };
   }
 
@@ -48,7 +58,7 @@ export class NextjsAdapter implements ISourceAdapter {
       throw new Error(`Invalid Next.js documentation path: ${path}`);
     }
 
-    const sourceUrl = new URL(path, NEXTJS_DOCS_BASE_URL).href;
+    const sourceUrl = new URL(path, this.documentationUrl).href;
     const response = await this.markdown.load(
       `${sourceUrl}.md`,
       signal,

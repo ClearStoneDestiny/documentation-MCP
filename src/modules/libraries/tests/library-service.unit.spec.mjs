@@ -1,5 +1,5 @@
 import { expect, test, vi } from "vitest";
-import { LibraryRegistry } from "../../../../dist/modules/libraries/library-registry.service.js";
+import { createRegistry } from "./fixtures/library.fixture.mjs";
 import { LibraryService } from "../../../../dist/modules/libraries/library.service.js";
 
 const nextjsLibrary = {
@@ -23,7 +23,7 @@ function setup() {
     fetchCatalog: vi.fn(),
     fetchDocument: vi.fn(),
   };
-  const registry = new LibraryRegistry(adapter);
+  const registry = createRegistry(adapter);
   const list = vi.spyOn(registry, "list");
 
   return { adapter, registry, list, service: new LibraryService(registry) };

@@ -1,35 +1,16 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { ILibraryRegistration } from "./interfaces/library-registration.interface.js";
-import { NextjsAdapter } from "../sources/adapters/nextjs.adapter.js";
-import { NEXTJS_DOCS_BASE_URL } from "../sources/constants/nextjs.constant.js";
+import { LIBRARY_REGISTRATIONS } from "./constants/library-registrations.constant.js";
 
 @Injectable()
 export class LibraryRegistry {
   private readonly registrations: readonly ILibraryRegistration[];
 
   constructor(
-    @Inject(NextjsAdapter)
-    nextjs: NextjsAdapter,
+    @Inject(LIBRARY_REGISTRATIONS)
+    registrations: readonly ILibraryRegistration[],
   ) {
-    this.registrations = [
-      {
-        id: nextjs.libraryId,
-        name: "Next.js",
-        documentationUrl: NEXTJS_DOCS_BASE_URL,
-
-        capabilities: {
-          tools: [
-            "get_documentation",
-            "search_docs",
-            "list_versions",
-            "get_code_examples",
-          ],
-          historicalDocumentation: false,
-        },
-
-        adapter: nextjs,
-      },
-    ];
+    this.registrations = Object.freeze([...registrations]);
   }
 
   list(): readonly ILibraryRegistration[] {

@@ -1,8 +1,11 @@
 import * as z from "zod/v4";
 import { cacheInfoSchema } from "../../cache/schemas/cache.schema.js";
-import { LIBRARY_IDS } from "../constants/library.constant.js";
+import { LIBRARY_DEFINITIONS } from "../constants/library-definitions.constant.js";
+import type { TLibraryId } from "../interfaces/library-id.type.js";
 
-export const libraryIdSchema = z.enum(LIBRARY_IDS);
+export const libraryIdSchema = z.enum(
+  Object.keys(LIBRARY_DEFINITIONS) as TLibraryId[],
+);
 
 export const listVersionsInputSchema = z.strictObject({
   library: libraryIdSchema.describe(

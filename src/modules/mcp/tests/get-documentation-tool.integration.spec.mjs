@@ -11,6 +11,7 @@ import { NextjsAdapter } from "../../../../dist/modules/sources/adapters/nextjs.
 import { GetDocumentationTool } from "../../../../dist/modules/mcp/tools/get-documentation.tool.js";
 import { FileCacheService } from "../../../../dist/modules/cache/file-cache.service.js";
 import { CachedMarkdownService } from "../../../../dist/modules/sources/services/cached-markdown.service.js";
+import { nextjsSourceOptions } from "../../libraries/tests/fixtures/library.fixture.mjs";
 
 const fixture = readFileSync(
   new URL("../../documentation/tests/fixtures/document.md", import.meta.url),
@@ -25,7 +26,7 @@ async function connect(
 ) {
   const store = new FileCacheService(cacheOptions);
   const service = new DocumentationService(
-    new NextjsAdapter(new CachedMarkdownService(store)),
+    new NextjsAdapter(new CachedMarkdownService(store), nextjsSourceOptions),
     new MarkdownDocumentParser(),
   );
   const server = new McpServer({

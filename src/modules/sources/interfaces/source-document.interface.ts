@@ -6,7 +6,7 @@ export interface ISourceDocument {
   path: string;
   sourceUrl: string;
   content: string;
-  format: "markdown";
+  format: string;
   fetchedAt: string;
   cache?: TCacheInfo;
 }

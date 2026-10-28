@@ -11,6 +11,7 @@ import { NEXTJS_DOCUMENT_PATH_PATTERN } from "../constants/nextjs.constant.js";
 
 @Injectable()
 export class NextjsAdapter implements ISourceAdapter {
+  readonly documentFormat = "markdown";
   readonly libraryId: string;
   readonly documentationUrl: string;
   private readonly catalogUrl: string;
@@ -24,7 +25,7 @@ export class NextjsAdapter implements ISourceAdapter {
     if (source.sources.catalog?.format !== "llms-txt") {
       throw new Error("NextjsAdapter requires an llms-txt catalog source.");
     }
-    
+
     this.libraryId = source.id;
     this.documentationUrl = source.documentationUrl;
     this.catalogUrl = source.sources.catalog.url;
@@ -38,11 +39,8 @@ export class NextjsAdapter implements ISourceAdapter {
     signal?: AbortSignal,
     options?: ISourceFetchOptions,
   ): Promise<ISourceCatalog> {
-    const response = await this.markdown.load(
-      this.catalogUrl,
-      signal,
-      options,
-    );
+    const response = await this.markdown.load(this.catalogUrl, signal, options);
+
     return {
       libraryId: this.libraryId,
       sourceUrl: this.catalogUrl,

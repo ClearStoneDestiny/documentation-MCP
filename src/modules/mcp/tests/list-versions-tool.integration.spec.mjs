@@ -9,7 +9,10 @@ import { VersionService } from "../../../../dist/modules/libraries/version.servi
 import { ListVersionsTool } from "../../../../dist/modules/mcp/tools/list-versions.tool.js";
 import { NextjsAdapter } from "../../../../dist/modules/sources/adapters/nextjs.adapter.js";
 import { CachedMarkdownService } from "../../../../dist/modules/sources/services/cached-markdown.service.js";
-import { nextjsSourceOptions } from "../../libraries/tests/fixtures/library.fixture.mjs";
+import {
+  createRegistry,
+  nextjsSourceOptions,
+} from "../../libraries/tests/fixtures/library.fixture.mjs";
 
 const catalogUrl = "https://nextjs.org/docs/llms.txt";
 const catalog =
@@ -27,7 +30,9 @@ async function connect(
   );
   const server = new McpServer({ name: "versions-test", version: "1.0.0" });
 
-  new ListVersionsTool(new VersionService(adapter)).register(server);
+  new ListVersionsTool(new VersionService(createRegistry(adapter))).register(
+    server,
+  );
 
   const client = new Client({ name: "test-client", version: "1.0.0" });
 

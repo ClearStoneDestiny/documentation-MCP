@@ -12,7 +12,10 @@ import { DocumentationService } from "../../../../dist/modules/documentation/doc
 import { SearchService } from "../../../../dist/modules/search/search.service.js";
 import { SearchDocsTool } from "../../../../dist/modules/mcp/tools/search-docs.tool.js";
 import { GetDocumentationTool } from "../../../../dist/modules/mcp/tools/get-documentation.tool.js";
-import { nextjsSourceOptions } from "../../libraries/tests/fixtures/library.fixture.mjs";
+import {
+  createRegistry,
+  nextjsSourceOptions,
+} from "../../libraries/tests/fixtures/library.fixture.mjs";
 
 const catalogUrl = "https://nextjs.org/docs/llms.txt";
 const path = "app/guides/caching";
@@ -40,10 +43,11 @@ async function connect(cacheOptions) {
     nextjsSourceOptions,
   );
   const parser = new MarkdownDocumentParser();
+  const registry = createRegistry(adapter);
   const server = new McpServer({ name: "search-test", version: "1.0.0" });
 
-  new SearchDocsTool(new SearchService(adapter, parser)).register(server);
-  new GetDocumentationTool(new DocumentationService(adapter, parser)).register(
+  new SearchDocsTool(new SearchService(registry, parser)).register(server);
+  new GetDocumentationTool(new DocumentationService(registry, parser)).register(
     server,
   );
 

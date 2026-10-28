@@ -7,6 +7,8 @@ export interface ILibraryOperations {
   readonly search_docs?: IIndexedDocumentationOperation;
   readonly get_code_examples?: IIndexedDocumentationOperation;
   readonly list_versions?: {
-    readonly fetchCatalog: NonNullable<ISourceAdapter["fetchCatalog"]>;
+    readonly listDocumentationSets: NonNullable<
+      ISourceAdapter["listDocumentationSets"]
+    >;
   };
 }

@@ -55,6 +55,7 @@ class FixtureAdapter {
         },
       ],
     }));
+
     this.fetchDocument = vi.fn(async (documentPath) => ({
       libraryId: options.id,
       path: documentPath,
@@ -63,6 +64,24 @@ class FixtureAdapter {
       format: "markdown",
       content: `# ${options.id} manual\n\n## Refresh\n\nRefresh ${options.id} data.\n\n\`\`\`ts\nrefresh("${options.id}")\n\`\`\``,
     }));
+
+    this.listDocumentationSets = vi.fn(async (signal, fetchOptions) => {
+      const catalog = await this.fetchCatalog(signal, fetchOptions);
+
+      return {
+        documentationSets: [
+          {
+            id: "current",
+            label: `Current ${options.name} documentation`,
+            channel: "current",
+            declaredVersion: catalog.docVersion,
+            versionRange: null,
+            sourceUrl: options.documentationUrl,
+          },
+        ],
+        catalog: { sourceUrl: catalog.sourceUrl, fetchedAt: catalog.fetchedAt },
+      };
+    });
   }
 }
 

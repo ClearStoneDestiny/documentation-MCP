@@ -16,7 +16,7 @@ export const getCodeExamplesInputSchema = z.strictObject({
     .max(100)
     .default("current")
     .describe(
-      "Documentation set to use. Currently only current is supported; historical versions are rejected.",
+      "Documentation set ID from list_versions, not a package release number or compatibility range. Currently only current is supported.",
     ),
   filters: z
     .strictObject({
@@ -37,7 +37,9 @@ export const getCodeExamplesInputSchema = z.strictObject({
 
 export const getCodeExamplesOutputSchema = z.object({
   libraryId: libraryIdSchema,
-  version: z.literal("current"),
+  version: z
+    .literal("current")
+    .describe("Selected documentation set ID, not a package version."),
   totalMatches: z.number().int().nonnegative(),
   examples: z.array(
     z.object({

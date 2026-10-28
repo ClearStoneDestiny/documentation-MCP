@@ -7,6 +7,7 @@ import { MarkdownDocumentParser } from "../../../../../dist/modules/documentatio
 
 export const nextjsSourceOptions = {
   id: "nextjs",
+  name: LIBRARY_DEFINITIONS.nextjs.name,
   documentationUrl: LIBRARY_DEFINITIONS.nextjs.documentationUrl,
   sources: LIBRARY_DEFINITIONS.nextjs.sources,
 };

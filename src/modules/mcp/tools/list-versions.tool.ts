@@ -21,9 +21,10 @@ export class ListVersionsTool {
         description:
           "List documentation sets available through this server for a supported library. " +
           "Select a library from list_libraries. Only the current documentation set is supported. " +
-          "Returns the catalog-declared version when available; this is not an " +
+          "Sets are discovered by the selected source adapter. Set IDs are not package release numbers. " +
+          "Returns source-declared version metadata when available; this is not an " +
           "immutable documentation revision or a verified compatibility range. " +
-          "Uses a disk cache; refresh checks the catalog source immediately. " +
+          "refresh asks the adapter to recheck discovery sources; catalog provenance is optional. " +
           "Inspect catalog.cache when present: stale means the source could not " +
           "be checked and a saved copy was returned. " +
           "Does not list all package releases or provide historical documentation.",

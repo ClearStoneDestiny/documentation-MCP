@@ -23,6 +23,7 @@ function setup() {
     documentFormat: "markdown",
     isValidPath: vi.fn(() => true),
     fetchCatalog: vi.fn(),
+    listDocumentationSets: vi.fn(),
     fetchDocument: vi.fn(),
   };
   const registry = createRegistry(adapter);
@@ -36,6 +37,7 @@ test("lists supported libraries and their public capabilities without fetching d
 
   expect(service.listLibraries({})).toEqual({ libraries: [nextjsLibrary] });
   expect(adapter.fetchCatalog).not.toHaveBeenCalled();
+  expect(adapter.listDocumentationSets).not.toHaveBeenCalled();
   expect(adapter.fetchDocument).not.toHaveBeenCalled();
 });
 

@@ -5,74 +5,66 @@ import { createRegistry } from "./fixtures/library.fixture.mjs";
 const request = { library: "nextjs" };
 
 function setup() {
-  const catalog = {
-    libraryId: "nextjs",
-    sourceUrl: "https://nextjs.org/docs/llms.txt",
-    fetchedAt: "2026-10-28T10:00:00.000Z",
-    docVersion: "99.1.0",
-    documents: [],
+  const sets = {
+    documentationSets: [
+      {
+        id: "current",
+        label: "Live handbook",
+        channel: "current",
+        declaredVersion: "99.1.0",
+        versionRange: null,
+        sourceUrl: "https://example.com/handbook/",
+      },
+    ],
+    catalog: {
+      sourceUrl: "https://example.com/catalog.txt",
+      fetchedAt: "2026-10-28T10:00:00.000Z",
+    },
   };
   const adapter = {
     libraryId: "nextjs",
-    documentFormat: "markdown",
-    documentationUrl: "https://nextjs.org/docs/",
-    fetchCatalog: vi.fn().mockResolvedValue(catalog),
-    fetchDocument: vi.fn(),
-    isValidPath: vi.fn(() => true),
+    listDocumentationSets: vi.fn().mockResolvedValue(sets),
   };
   return {
-    catalog,
+    sets,
     adapter,
     service: new VersionService(createRegistry(adapter)),
   };
 }
 
-test("returns only the current documentation set and defaults refresh to false", async () => {
-  const { catalog, adapter, service } = setup();
+test("delegates labels, URLs, and metadata to set discovery and defaults refresh to false", async () => {
+  const { sets, adapter, service } = setup();
   const result = await service.listVersion(request);
 
-  expect(adapter.fetchCatalog).toHaveBeenCalledExactlyOnceWith(undefined, {
-    refresh: false,
-  });
-  expect(result).toEqual({
-    library: "nextjs",
-    documentationSets: [
-      {
-        id: "current",
-        label: "Current Next.js documentation",
-        channel: "current",
-        declaredVersion: "99.1.0",
-        versionRange: null,
-        sourceUrl: "https://nextjs.org/docs/",
-      },
-    ],
-    catalog: {
-      sourceUrl: catalog.sourceUrl,
-      fetchedAt: catalog.fetchedAt,
+  expect(adapter.listDocumentationSets).toHaveBeenCalledExactlyOnceWith(
+    undefined,
+    {
+      refresh: false,
     },
-  });
+  );
+  expect(result).toEqual({ library: "nextjs", ...sets });
 });
 
-test("forwards refresh and the caller signal to the catalog adapter", async () => {
+test("forwards refresh and the caller signal to set discovery", async () => {
   const { adapter, service } = setup();
   const controller = new AbortController();
 
   await service.listVersion({ ...request, refresh: true }, controller.signal);
 
-  expect(adapter.fetchCatalog).toHaveBeenCalledExactlyOnceWith(
+  expect(adapter.listDocumentationSets).toHaveBeenCalledExactlyOnceWith(
     controller.signal,
     { refresh: true },
   );
 });
 
 test("preserves cache metadata and represents an unavailable version as null", async () => {
-  const { catalog, service } = setup();
+  const { sets, service } = setup();
 
-  delete catalog.docVersion;
+  sets.documentationSets[0].declaredVersion = null;
 
-  catalog.cache = {
+  sets.catalog.cache = {
     status: "stale",
-    checkedAt: catalog.fetchedAt,
+    checkedAt: sets.catalog.fetchedAt,
     persisted: true,
     warning: "Source is offline; serving the saved copy.",
   };
@@ -83,7 +75,7 @@ test("preserves cache metadata and represents an unavailable version as null", a
     declaredVersion: null,
     versionRange: null,
   });
-  expect(result.catalog.cache).toEqual(catalog.cache);
+  expect(result.catalog.cache).toEqual(sets.catalog.cache);
 });
 
 test.each([
@@ -91,13 +83,13 @@ test.each([
   { library: "react" },
   { ...request, version: "14" },
   { ...request, refresh: "true" },
-])("rejects invalid input before fetching the catalog: %j", async (input) => {
+])("rejects invalid input before discovering sets: %j", async (input) => {
   const { adapter, service } = setup();
 
   await expect(service.listVersion(input)).rejects.toMatchObject({
     code: "INVALID_REQUEST",
   });
-  expect(adapter.fetchCatalog).not.toHaveBeenCalled();
+  expect(adapter.listDocumentationSets).not.toHaveBeenCalled();
 });
 
 test.each([
@@ -107,7 +99,7 @@ test.each([
   "wraps source failure %j and preserves its cause",
   async (cause, message) => {
     const { adapter, service } = setup();
-    adapter.fetchCatalog.mockRejectedValue(cause);
+    adapter.listDocumentationSets.mockRejectedValue(cause);
 
     await expect(service.listVersion(request)).rejects.toMatchObject({
       name: "DocumentationError",
@@ -118,7 +110,7 @@ test.each([
   },
 );
 
-test("honors an already aborted signal before fetching the catalog", async () => {
+test("honors an already aborted signal before discovering sets", async () => {
   const { adapter, service } = setup();
   const reason = new Error("Cancelled by caller");
   const controller = new AbortController();
@@ -129,24 +121,24 @@ test("honors an already aborted signal before fetching the catalog", async () =>
     reason,
   );
 
-  expect(adapter.fetchCatalog).not.toHaveBeenCalled();
+  expect(adapter.listDocumentationSets).not.toHaveBeenCalled();
 });
 
 test.each([false, true])(
-  "preserves cancellation when the catalog request finishes (rejects: %s)",
+  "preserves cancellation when set discovery finishes (rejects: %s)",
   async (rejects) => {
-    const { catalog, adapter, service } = setup();
+    const { sets, adapter, service } = setup();
     const controller = new AbortController();
     const reason = new Error("Cancelled during catalog fetch");
 
-    adapter.fetchCatalog.mockImplementation(async () => {
+    adapter.listDocumentationSets.mockImplementation(async () => {
       controller.abort(reason);
 
       if (rejects) {
         throw new Error("Source interrupted");
       }
 
-      return catalog;
+      return sets;
     });
 
     await expect(service.listVersion(request, controller.signal)).rejects.toBe(
@@ -154,3 +146,81 @@ test.each([false, true])(
     );
   },
 );
+
+test("static set discovery works without any catalog or document loader", async () => {
+  const { sets, service } = setup();
+
+  delete sets.catalog;
+
+  expect(await service.listVersion(request)).toEqual({
+    library: "nextjs",
+    documentationSets: sets.documentationSets,
+  });
+});
+
+test("does not infer compatibility or set IDs from declared version metadata", async () => {
+  const { sets, service } = setup();
+  sets.documentationSets[0].declaredVersion = "^19.0.0";
+
+  const result = await service.listVersion(request);
+
+  expect(result.documentationSets[0]).toMatchObject({
+    id: "current",
+    declaredVersion: "^19.0.0",
+    versionRange: null,
+  });
+});
+
+test.each([
+  undefined,
+  {},
+  { documentationSets: "current" },
+  { documentationSets: [{ id: "current" }] },
+])(
+  "rejects malformed discovery results as SOURCE_ERROR: %j",
+  async (result) => {
+    const { adapter, service } = setup();
+    adapter.listDocumentationSets.mockResolvedValue(result);
+
+    await expect(service.listVersion(request)).rejects.toMatchObject({
+      code: "SOURCE_ERROR",
+    });
+  },
+);
+
+test.each([
+  { id: "99.1.0" },
+  { id: "v14", channel: "versioned" },
+  { channel: "versioned" },
+  { declaredVersion: 99 },
+  { sourceUrl: "not-a-url" },
+])("rejects invalid or unselectable set metadata: %j", async (overrides) => {
+  const { sets, service } = setup();
+
+  Object.assign(sets.documentationSets[0], overrides);
+
+  await expect(service.listVersion(request)).rejects.toMatchObject({
+    code: "SOURCE_ERROR",
+  });
+});
+
+test("rejects duplicate set IDs instead of exposing ambiguous selections", async () => {
+  const { sets, service } = setup();
+  sets.documentationSets.push({ ...sets.documentationSets[0] });
+
+  await expect(service.listVersion(request)).rejects.toMatchObject({
+    code: "SOURCE_ERROR",
+  });
+});
+
+test("supports an empty available-set result without fabricating current", async () => {
+  const { sets, service } = setup();
+  sets.documentationSets = [];
+
+  delete sets.catalog;
+  
+  expect(await service.listVersion(request)).toEqual({
+    library: "nextjs",
+    documentationSets: [],
+  });
+});

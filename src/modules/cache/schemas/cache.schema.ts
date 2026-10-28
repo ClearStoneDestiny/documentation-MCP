@@ -1,7 +1,13 @@
 import * as z from "zod/v4";
+import { libraryIdSchema } from "../../libraries/schemas/library-id.schema.js";
 
-export const cacheEntrySchema = z.object({
-  schemaVersion: z.literal(1),
+export const cacheScopeSchema = z.object({
+  libraryId: libraryIdSchema,
+  documentationSetId: z.string().min(1).max(100),
+});
+
+export const cacheEntrySchema = cacheScopeSchema.extend({
+  schemaVersion: z.literal(2),
   url: z.string().url(),
   content: z.string().refine((value) => value.trim().length > 0),
   contentHash: z.string().regex(/^[a-f0-9]{64}$/),

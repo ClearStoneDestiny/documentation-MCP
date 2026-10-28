@@ -1,7 +1,8 @@
-import { Inject, Injectable, Optional } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 import { contentHash } from "../cache/utils/content-hash.util.js";
 import { MarkdownDocumentParser } from "../documentation/parsers/markdown-document.parser.js";
-import { NextjsAdapter } from "../sources/adapters/nextjs.adapter.js";
+import { LibraryRegistry } from "../libraries/library-registry.service.js";
+import type { ISourceAdapter } from "../sources/interfaces/source-adapter.interface.js";
 import type { ISourceDocument } from "../sources/interfaces/source-document.interface.js";
 import { SearchError } from "./errors/search.error.js";
 import { SectionIndex } from "./section-index.js";
@@ -21,9 +22,7 @@ export class SearchService {
   private pending: Promise<void> = Promise.resolve();
 
   constructor(
-    @Optional()
-    @Inject(NextjsAdapter)
-    private readonly nextjs: NextjsAdapter | undefined,
+    @Inject(LibraryRegistry) private readonly registry: LibraryRegistry,
     @Inject(MarkdownDocumentParser)
     private readonly parser: MarkdownDocumentParser,
   ) {}
@@ -41,10 +40,22 @@ export class SearchService {
 
     signal?.throwIfAborted();
 
-    const adapter = this.nextjs;
+    const registration = this.registry.get(validation.data.library);
 
-    if (!adapter || adapter.libraryId !== validation.data.library) {
+    if (!registration) {
       throw new SearchError("INVALID_REQUEST", "Unsupported library.");
+    }
+
+    const adapter = registration.adapter;
+
+    if (
+      validation.data.path_prefix &&
+      !adapter.isValidPath(validation.data.path_prefix)
+    ) {
+      throw new SearchError(
+        "INVALID_REQUEST",
+        "Invalid documentation path prefix for this library.",
+      );
     }
 
     const task = this.pending.then(() =>
@@ -76,7 +87,7 @@ export class SearchService {
 
   private async synchronizeAndSearch(
     request: ReturnType<typeof searchDocsInputSchema.parse>,
-    adapter: NextjsAdapter,
+    adapter: ISourceAdapter,
     signal?: AbortSignal,
     onProgress?: (completed: number, total: number) => Promise<void>,
   ): Promise<TSearchDocsResult> {
@@ -184,7 +195,7 @@ export class SearchService {
     failures.sort((left, right) => left.path.localeCompare(right.path, "en"));
 
     return {
-      libraryId: "nextjs",
+      libraryId: request.library,
       channel: "current",
       query: request.query,
       terms,
@@ -210,7 +221,7 @@ export class SearchService {
             fetchedAt: source.fetchedAt,
             ...(source.cache ? { cache: source.cache } : {}),
             getDocumentation: {
-              library: "nextjs",
+              library: request.library,
               path: section.path,
               section_id: section.sectionId,
               expected_hash: hash,

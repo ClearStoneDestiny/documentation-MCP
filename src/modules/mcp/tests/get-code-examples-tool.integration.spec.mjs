@@ -61,9 +61,9 @@ async function connect(options, service) {
   new GetCodeExamplesTool(
     service ?? new CodeExamplesService(createRegistry(adapter), parser),
   ).register(server);
-  new GetDocumentationTool(new DocumentationService(adapter, parser)).register(
-    server,
-  );
+  new GetDocumentationTool(
+    new DocumentationService(createRegistry(adapter), parser),
+  ).register(server);
 
   const client = new Client({ name: "test-client", version: "1.0.0" });
 

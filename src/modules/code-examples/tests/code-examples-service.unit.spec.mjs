@@ -48,6 +48,7 @@ function setup(
 
   const adapter = {
     libraryId: "nextjs",
+    isValidPath: vi.fn(() => true),
     fetchCatalog: vi.fn(async () => catalog),
     fetchDocument: vi.fn(async (path) => ({
       libraryId: "nextjs",

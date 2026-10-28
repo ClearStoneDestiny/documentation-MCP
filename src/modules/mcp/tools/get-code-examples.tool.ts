@@ -19,7 +19,7 @@ export class GetCodeExamplesTool {
       {
         description:
           "Extract complete code blocks from official documentation, ranked by lexical query keywords in code, surrounding prose and headings. " +
-          "Currently supports Next.js and version current only; historical versions are rejected. " +
+          "Select a library from list_libraries. Only version current is supported; historical versions are rejected. " +
           "filters.languages selects fence languages; filters.path_prefix restricts downloads to an exact page or subtree. " +
           "The first call loads pages directly listed in the root catalog; nested catalogs are not expanded. " +
           "Uses the disk cache; refresh rechecks sources. Inspect coverage for partial failures and stale sources. " +

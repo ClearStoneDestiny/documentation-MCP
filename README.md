@@ -128,7 +128,11 @@ The object key is the library ID. `adapter` is a class reference; Nest construct
 
 Set `enabled: false`, rebuild when running compiled code, and restart the server to disable a library. It is omitted from `list_libraries`, its adapter is not instantiated, and library tools reject requests without fetching sources. Disabling every library is supported. Existing cached files are preserved. There is no background indexing; search indexing runs on demand. Editing configuration objects after registration does not change the running registrations.
 
-Library ID types and the shared library enum derive from the definition keys; there is no separate `LIBRARY_IDS` list. This is the first stage of multi-library support: documentation, search, and version services still inject the Next.js adapter through compatibility aliases, and some tool schemas and descriptions remain specific to Next.js. Full service routing through the registry, index/cache isolation, and capability resolution are follow-up stages. The existing current-Markdown tool capabilities are preserved during this stage.
+All library tools resolve the requested ID through `LibraryRegistry`. Schemas validate identifier syntax without importing built-in definitions or enumerating enabled libraries. Unknown and disabled IDs return `INVALID_REQUEST` with `Unsupported library.` before loading sources. `list_libraries` is the source of available IDs; there is no separate `LIBRARY_IDS` list or concrete-adapter DI alias.
+
+`ISourceAdapter.isValidPath(path)` defines source-specific syntax for document paths and subtree prefixes, independently of page existence. The common path schema rejects URLs, absolute paths, dot segments, encoded paths, query strings, fragments, backslashes, whitespace, and control characters. It allows filenames such as `guide/api.v2.md` when the selected adapter supports them. Next.js retains its stricter extensionless path rules. Invalid paths and prefixes return `INVALID_REQUEST` before source loading.
+
+Documentation, search, examples, and version responses use the requested registration's ID and metadata. Version listing still describes one `current` documentation set using the catalog's declared version. Historical sets, per-library cache/index namespaces, and capability resolution remain follow-up stages. Search currently shares one serialized in-memory index across libraries; switching libraries synchronizes it against the selected catalog. The existing current-Markdown tool capabilities are preserved during this stage.
 
 ## get_documentation
 
@@ -145,8 +149,8 @@ Example tool arguments:
 
 | Parameter | Meaning |
 | --- | --- |
-| `library` | Required; currently only `nextjs` is supported. |
-| `path` | Required; page path relative to `/docs`, without a URL or `.md` suffix. |
+| `library` | Required; an enabled identifier from `list_libraries`. The default configuration includes `nextjs`. |
+| `path` | Required; relative page path supported by the selected adapter. Next.js paths are relative to `/docs` without a `.md` suffix. |
 | `section_id` | Optional ID from the response's `sections` outline. Returns the section and all its subsections. The synthetic Introduction returns only its own preamble. |
 | `max_chars` | Markdown size limit, from 256 to 40,000; defaults to 12,000. Metadata and the section outline are additional. |
 | `offset` | Offset within the selected content; defaults to 0. Continue with the returned `pagination.nextOffset`. |
@@ -186,9 +190,9 @@ Example tool arguments:
 
 | Parameter | Meaning |
 | --- | --- |
-| `library` | Required; currently `nextjs`. |
+| `library` | Required; an enabled identifier from `list_libraries`. |
 | `query` | Required lexical keywords, 1–256 characters. Use the documentation's language (usually English) and API names, e.g. `caching revalidation` or `unstable_cache`. Whitespace, punctuation-only queries, and queries containing only common stop words are rejected. |
-| `path_prefix` | Optional exact page or subtree relative to `/docs`, without a trailing slash. `app/guides/data` selects that page and its descendants, but not `app/guides/database`. Restricts downloads as well as results. |
+| `path_prefix` | Optional exact page or subtree within the selected library's documentation, without a trailing slash. `app/guides/data` selects that page and its descendants, but not `app/guides/database`. Adapter path rules apply. Restricts downloads as well as results. |
 | `limit` | 1–20 matching sections; defaults to 5. |
 | `refresh` | Defaults to `false`. Check the catalog and every page in the selected scope now, bypassing TTL. |
 
@@ -240,11 +244,11 @@ Extract complete code blocks from current official documentation using lexical k
 
 | Parameter | Meaning |
 | --- | --- |
-| `library` | Required; currently `nextjs`. Discover capabilities with `list_libraries`. |
+| `library` | Required; an enabled identifier from `list_libraries`. Discover capabilities there as well. |
 | `query` | Required lexical keywords, 1–256 characters; use documentation-language keywords and exact API names. |
 | `version` | Defaults to `current`, the only available documentation set. Historical versions, exact release numbers, and ranges return `VERSION_UNAVAILABLE` before downloading sources. |
 | `filters.languages` | Optional nonempty list of up to 10 fence languages, matched case-insensitively. `js`/`javascript` and `ts`/`typescript` are aliases; `jsx` and `tsx` remain distinct. Untagged blocks are included only when no language filter is set. |
-| `filters.path_prefix` | Optional exact page or subtree relative to `/docs`. Restricts downloads as well as results. |
+| `filters.path_prefix` | Optional exact page or subtree within the selected library's documentation. Adapter path rules apply. Restricts downloads as well as results. |
 | `limit` | Number of code blocks to return, 1–20; defaults to 5. Filters apply before ranking and limiting. |
 | `refresh` | Defaults to `false`. Recheck the catalog and selected pages immediately. |
 
@@ -296,13 +300,15 @@ After building, let Nest resolve the adapter and its cache dependencies:
 
 ```js
 import "reflect-metadata";
-import { NextjsAdapter } from "./dist/modules/sources/adapters/nextjs.adapter.js";
-import { SourcesModule } from "./dist/modules/sources/sources.module.js";
+import { LibraryRegistry } from "./dist/modules/libraries/library-registry.service.js";
+import { LibrariesModule } from "./dist/modules/libraries/libraries.module.js";
 import { NestFactory } from "@nestjs/core";
 
-const app = await NestFactory.createApplicationContext(SourcesModule, { logger: false });
+const app = await NestFactory.createApplicationContext(LibrariesModule, { logger: false });
 try {
-  const adapter = app.get(NextjsAdapter);
+  const registration = app.get(LibraryRegistry).get("nextjs");
+  if (!registration) throw new Error("Next.js is not enabled");
+  const adapter = registration.adapter;
   const catalog = await adapter.fetchCatalog();
   const page = catalog.documents.find((entry) => entry.path === "app/getting-started/caching");
 

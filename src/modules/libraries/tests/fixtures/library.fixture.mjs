@@ -8,8 +8,8 @@ export const nextjsSourceOptions = {
   sources: LIBRARY_DEFINITIONS.nextjs.sources,
 };
 
-export function createRegistry(adapter) {
+export function createRegistry(adapter, definition = LIBRARY_DEFINITIONS.nextjs) {
   return new LibraryRegistry([
-    createLibraryRegistration("nextjs", LIBRARY_DEFINITIONS.nextjs, adapter),
+    createLibraryRegistration(adapter.libraryId, definition, adapter),
   ]);
 }

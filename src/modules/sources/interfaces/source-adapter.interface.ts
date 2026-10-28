@@ -4,6 +4,15 @@ import type { ISourceFetchOptions } from "./source-fetch-options.interface.js";
 
 export interface ISourceAdapter {
   readonly libraryId: string;
-  fetchCatalog(signal?: AbortSignal, options?: ISourceFetchOptions): Promise<ISourceCatalog>;
-  fetchDocument(path: string, signal?: AbortSignal, options?: ISourceFetchOptions): Promise<ISourceDocument>;
+  // Syntax rules for document paths and subtree prefixes, not page existence
+  isValidPath(path: string): boolean;
+  fetchCatalog(
+    signal?: AbortSignal,
+    options?: ISourceFetchOptions,
+  ): Promise<ISourceCatalog>;
+  fetchDocument(
+    path: string,
+    signal?: AbortSignal,
+    options?: ISourceFetchOptions,
+  ): Promise<ISourceDocument>;
 }

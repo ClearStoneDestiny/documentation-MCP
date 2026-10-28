@@ -1,5 +1,5 @@
-import { Inject, Injectable, Optional } from "@nestjs/common";
-import { NextjsAdapter } from "../sources/adapters/nextjs.adapter.js";
+import { Inject, Injectable } from "@nestjs/common";
+import { LibraryRegistry } from "./library-registry.service.js";
 import {
   listVersionsInputSchema,
   TListVersionsInput,
@@ -11,9 +11,7 @@ import { ISourceCatalog } from "../sources/interfaces/source-catalog.interface.j
 @Injectable()
 export class VersionService {
   constructor(
-    @Optional()
-    @Inject(NextjsAdapter)
-    private readonly nextjs: NextjsAdapter | undefined,
+    @Inject(LibraryRegistry) private readonly registry: LibraryRegistry,
   ) {}
 
   async listVersion(
@@ -30,14 +28,16 @@ export class VersionService {
 
     signal?.throwIfAborted();
 
-    if (!this.nextjs || this.nextjs.libraryId !== request.library) {
+    const registration = this.registry.get(request.library);
+
+    if (!registration) {
       throw new DocumentationError("INVALID_REQUEST", "Unsupported library.");
     }
 
     let catalog: ISourceCatalog;
 
     try {
-      catalog = await this.nextjs.fetchCatalog(signal, {
+      catalog = await registration.adapter.fetchCatalog(signal, {
         refresh: request.refresh,
       });
     } catch (cause: any) {
@@ -56,11 +56,11 @@ export class VersionService {
       documentationSets: [
         {
           id: "current",
-          label: "Current Next.js documentation",
+          label: `Current ${registration.name} documentation`,
           channel: "current",
           declaredVersion: catalog.docVersion ?? null,
           versionRange: null,
-          sourceUrl: this.nextjs.documentationUrl,
+          sourceUrl: registration.documentationUrl,
         },
       ],
 

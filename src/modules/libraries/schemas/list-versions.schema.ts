@@ -1,16 +1,9 @@
 import * as z from "zod/v4";
 import { cacheInfoSchema } from "../../cache/schemas/cache.schema.js";
-import { LIBRARY_DEFINITIONS } from "../constants/library-definitions.constant.js";
-import type { TLibraryId } from "../interfaces/library-id.type.js";
-
-export const libraryIdSchema = z.enum(
-  Object.keys(LIBRARY_DEFINITIONS) as TLibraryId[],
-);
+import { libraryIdSchema } from "./library-id.schema.js";
 
 export const listVersionsInputSchema = z.strictObject({
-  library: libraryIdSchema.describe(
-    "Library identifier. Currently supported: nextjs.",
-  ),
+  library: libraryIdSchema,
   refresh: z.boolean().default(false),
 });
 

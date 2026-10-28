@@ -74,10 +74,8 @@ test("the application shares one configured Next.js adapter without fetching sou
   onTestFinished(() => app.close());
 
   const registry = app.get(LibraryRegistry);
-  const adapter = app.get(NextjsAdapter);
-
-  expect(registry.get("nextjs").adapter).toBe(adapter);
-  expect(app.get(NextjsAdapter, { each: true })).toEqual([adapter]);
+  expect(registry.get("nextjs").adapter).toBeInstanceOf(NextjsAdapter);
+  expect(() => app.get(NextjsAdapter)).toThrow();
   expect(app.get(LibraryService).listLibraries({}).libraries).toHaveLength(1);
   expect(fetch).not.toHaveBeenCalled();
 });
@@ -99,6 +97,7 @@ function fixtureAdapter() {
     async fetchDocument() {
       throw new Error("Not called during startup");
     }
+    isValidPath() { return true; }
   }
 
   Inject(CachedMarkdownService)(Adapter, undefined, 0);

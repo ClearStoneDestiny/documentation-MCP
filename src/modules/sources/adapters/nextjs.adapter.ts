@@ -30,6 +30,10 @@ export class NextjsAdapter implements ISourceAdapter {
     this.catalogUrl = source.sources.catalog.url;
   }
 
+  isValidPath(path: string): boolean {
+    return NEXTJS_DOCUMENT_PATH_PATTERN.test(path);
+  }
+
   async fetchCatalog(
     signal?: AbortSignal,
     options?: ISourceFetchOptions,
@@ -54,7 +58,7 @@ export class NextjsAdapter implements ISourceAdapter {
     options?: ISourceFetchOptions,
   ): Promise<ISourceDocument> {
     // Paths are relative to /docs, for example app/getting-started/caching
-    if (!NEXTJS_DOCUMENT_PATH_PATTERN.test(path)) {
+    if (!this.isValidPath(path)) {
       throw new Error(`Invalid Next.js documentation path: ${path}`);
     }
 

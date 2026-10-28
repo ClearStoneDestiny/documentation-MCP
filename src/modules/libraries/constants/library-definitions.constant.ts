@@ -17,6 +17,4 @@ export const LIBRARY_DEFINITIONS = {
   },
 } as const satisfies Record<string, ILibraryDefinition>;
 
-export type TLibraryDefinitions = Readonly<
-  Partial<Record<keyof typeof LIBRARY_DEFINITIONS, ILibraryDefinition>>
->;
+export type TLibraryDefinitions = Readonly<Record<string, ILibraryDefinition>>;

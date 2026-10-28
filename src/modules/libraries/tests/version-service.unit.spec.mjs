@@ -1,5 +1,6 @@
 import { expect, test, vi } from "vitest";
 import { VersionService } from "../../../../dist/modules/libraries/version.service.js";
+import { createRegistry } from "./fixtures/library.fixture.mjs";
 
 const request = { library: "nextjs" };
 
@@ -15,8 +16,14 @@ function setup() {
     libraryId: "nextjs",
     documentationUrl: "https://nextjs.org/docs/",
     fetchCatalog: vi.fn().mockResolvedValue(catalog),
+    fetchDocument: vi.fn(),
+    isValidPath: vi.fn(() => true),
   };
-  return { catalog, adapter, service: new VersionService(adapter) };
+  return {
+    catalog,
+    adapter,
+    service: new VersionService(createRegistry(adapter)),
+  };
 }
 
 test("returns only the current documentation set and defaults refresh to false", async () => {
@@ -133,7 +140,7 @@ test.each([false, true])(
 
     adapter.fetchCatalog.mockImplementation(async () => {
       controller.abort(reason);
-      
+
       if (rejects) {
         throw new Error("Source interrupted");
       }

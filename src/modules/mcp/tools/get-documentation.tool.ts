@@ -19,7 +19,7 @@ export class GetDocumentationTool {
       "get_documentation",
       {
         description:
-          "Fetch current official Next.js documentation by page path, optionally selecting a section and its subsections. Uses a disk cache; refresh checks the source immediately. Inspect cache.status: stale means the source could not be checked. Returns Markdown, source metadata, and section IDs. Historical versions are not supported. Use nextOffset and contentHash to continue truncated content; preserve path and section_id between pages. Code fences can span response boundaries.",
+          "Fetch current official documentation for a library from list_libraries by page path, optionally selecting a section and its subsections. Uses a disk cache; refresh checks the source immediately. Inspect cache.status: stale means the source could not be checked. Returns Markdown, source metadata, and section IDs. Historical versions are not supported. Use nextOffset and contentHash to continue truncated content; preserve library, path and section_id between pages. Code fences can span response boundaries.",
         inputSchema: getDocumentationInputSchema,
         outputSchema: getDocumentationOutputSchema,
         annotations: {

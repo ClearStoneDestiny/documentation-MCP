@@ -10,6 +10,7 @@ export function createLibraryRegistration(
   adapter: ISourceAdapter,
 ): ILibraryRegistration {
   if (
+    typeof adapter.isValidPath !== "function" ||
     typeof adapter.fetchCatalog !== "function" ||
     typeof adapter.fetchDocument !== "function"
   ) {

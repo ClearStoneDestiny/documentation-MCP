@@ -1,3 +1,5 @@
+export const LIBRARY_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
 export const LIBRARY_TOOL_NAMES = [
   "get_documentation",
   "search_docs",

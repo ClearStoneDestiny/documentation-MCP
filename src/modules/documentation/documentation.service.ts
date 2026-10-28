@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { Inject, Injectable, Optional } from "@nestjs/common";
-import { NextjsAdapter } from "../sources/adapters/nextjs.adapter.js";
+import { Inject, Injectable } from "@nestjs/common";
+import { LibraryRegistry } from "../libraries/library-registry.service.js";
 import { DocumentationError } from "./errors/documentation.error.js";
 import { MarkdownDocumentParser } from "./parsers/markdown-document.parser.js";
 import type { IParsedDocument } from "./interfaces/parsed-document.interface.js";
@@ -13,8 +13,7 @@ import {
 @Injectable()
 export class DocumentationService {
   constructor(
-    @Optional() @Inject(NextjsAdapter)
-    private readonly nextjs: NextjsAdapter | undefined,
+    @Inject(LibraryRegistry) private readonly registry: LibraryRegistry,
     @Inject(MarkdownDocumentParser)
     private readonly parser: MarkdownDocumentParser,
   ) {}
@@ -33,11 +32,22 @@ export class DocumentationService {
 
     signal?.throwIfAborted();
 
-    if (!this.nextjs || this.nextjs.libraryId !== request.library) {
+    const registration = this.registry.get(request.library);
+
+    if (!registration) {
       throw new DocumentationError("INVALID_REQUEST", "Unsupported library.");
     }
 
-    const source = await this.nextjs
+    const adapter = registration.adapter;
+
+    if (!adapter.isValidPath(request.path)) {
+      throw new DocumentationError(
+        "INVALID_REQUEST",
+        "Invalid documentation path for this library.",
+      );
+    }
+
+    const source = await adapter
       .fetchDocument(request.path, signal, { refresh: request.refresh })
       .catch((cause: unknown) => {
         signal?.throwIfAborted();
@@ -124,7 +134,7 @@ export class DocumentationService {
     const truncated = end < selectedContent.length;
 
     return {
-      libraryId: "nextjs",
+      libraryId: registration.id,
       path: document.path,
       sourceUrl: document.sourceUrl,
       title: document.title,

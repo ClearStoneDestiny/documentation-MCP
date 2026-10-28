@@ -1,6 +1,6 @@
 import * as z from "zod/v4";
 import { cacheInfoSchema } from "../../cache/schemas/cache.schema.js";
-import { libraryIdSchema } from "../../libraries/schemas/list-versions.schema.js";
+import { libraryIdSchema } from "../../libraries/schemas/library-id.schema.js";
 import {
   searchDocsInputSchema,
   searchDocsOutputSchema,

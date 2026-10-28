@@ -1,10 +1,11 @@
 import * as z from "zod/v4";
 import { cacheInfoSchema } from "../../cache/schemas/cache.schema.js";
-import { NEXTJS_DOCUMENT_PATH_PATTERN } from "../../sources/constants/nextjs.constant.js";
+import { libraryIdSchema } from "../../libraries/schemas/library-id.schema.js";
+import { sourcePathSchema } from "../../sources/schemas/source-path.schema.js";
 import { queryTerms } from "../utils/tokenize.util.js";
 
 export const searchDocsInputSchema = z.strictObject({
-  library: z.literal("nextjs"),
+  library: libraryIdSchema,
   query: z
     .string()
     .trim()
@@ -17,14 +18,10 @@ export const searchDocsInputSchema = z.strictObject({
     .describe(
       "Lexical keywords in the documentation's language, usually English; include exact API names. No semantic translation or historical version comparison.",
     ),
-  path_prefix: z
-    .string()
-    .min(1)
-    .max(512)
-    .regex(NEXTJS_DOCUMENT_PATH_PATTERN)
+  path_prefix: sourcePathSchema
     .optional()
     .describe(
-      "Optional exact page or subtree relative to /docs, e.g. app/guides. Restricts both downloads and search. No trailing slash.",
+      "Optional exact page or subtree within the selected library's documentation. Restricts both downloads and search. No trailing slash; source-specific rules apply.",
     ),
   limit: z.number().int().min(1).max(20).default(5),
   refresh: z
@@ -36,7 +33,7 @@ export const searchDocsInputSchema = z.strictObject({
 });
 
 export const searchDocsOutputSchema = z.object({
-  libraryId: z.literal("nextjs"),
+  libraryId: libraryIdSchema,
   channel: z.literal("current"),
   query: z.string(),
   terms: z.array(z.string()),
@@ -58,7 +55,7 @@ export const searchDocsOutputSchema = z.object({
       fetchedAt: z.string(),
       cache: cacheInfoSchema.optional(),
       getDocumentation: z.object({
-        library: z.literal("nextjs"),
+        library: libraryIdSchema,
         path: z.string(),
         section_id: z.string(),
         expected_hash: z.string(),

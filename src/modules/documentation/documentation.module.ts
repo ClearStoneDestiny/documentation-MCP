@@ -1,10 +1,10 @@
 import { Module } from "@nestjs/common";
 import { MarkdownDocumentParser } from "./parsers/markdown-document.parser.js";
-import { SourcesModule } from "../sources/sources.module.js";
+import { LibrariesModule } from "../libraries/libraries.module.js";
 import { DocumentationService } from "./documentation.service.js";
 
 @Module({
-  imports: [SourcesModule],
+  imports: [LibrariesModule],
   providers: [MarkdownDocumentParser, DocumentationService],
   exports: [MarkdownDocumentParser, DocumentationService],
 })

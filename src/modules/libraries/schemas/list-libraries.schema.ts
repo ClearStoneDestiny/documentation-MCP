@@ -1,5 +1,5 @@
 import * as z from "zod/v4";
-import { libraryIdSchema } from "./list-versions.schema.js";
+import { libraryIdSchema } from "./library-id.schema.js";
 import { LIBRARY_TOOL_NAMES } from "../constants/library.constant.js";
 
 export const listLibrariesInputSchema = z.strictObject({

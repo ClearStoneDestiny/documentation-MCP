@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable, Optional } from "@nestjs/common";
 import { NextjsAdapter } from "../sources/adapters/nextjs.adapter.js";
 import { DocumentationError } from "./errors/documentation.error.js";
 import { MarkdownDocumentParser } from "./parsers/markdown-document.parser.js";
@@ -13,7 +13,8 @@ import {
 @Injectable()
 export class DocumentationService {
   constructor(
-    @Inject(NextjsAdapter) private readonly nextjs: NextjsAdapter,
+    @Optional() @Inject(NextjsAdapter)
+    private readonly nextjs: NextjsAdapter | undefined,
     @Inject(MarkdownDocumentParser)
     private readonly parser: MarkdownDocumentParser,
   ) {}
@@ -31,6 +32,10 @@ export class DocumentationService {
     const request = validation.data;
 
     signal?.throwIfAborted();
+
+    if (!this.nextjs || this.nextjs.libraryId !== request.library) {
+      throw new DocumentationError("INVALID_REQUEST", "Unsupported library.");
+    }
 
     const source = await this.nextjs
       .fetchDocument(request.path, signal, { refresh: request.refresh })

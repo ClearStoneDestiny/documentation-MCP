@@ -124,7 +124,7 @@ export const LIBRARY_DEFINITIONS = {
 } as const satisfies Record<string, ILibraryDefinition>;
 ```
 
-The object key is the library ID. `adapter` is a class reference; Nest constructs the instance and injects `CachedMarkdownService` and `LIBRARY_SOURCE_OPTIONS` (`id`, `documentationUrl`, and `sources`). `NextjsAdapter` uses these options for catalog requests, catalog URL normalization, and document requests. The supported optional catalog configuration currently describes an `llms-txt` source; Next.js requires it. Document URL rules remain in the adapter. `documentFormat` identifies the format returned by `fetchDocument`, after any conversion inside the adapter; the installed processing pipeline currently supports Markdown. Documentation base URLs must end with `/`.
+The object key is the library ID. `adapter` is a class reference; Nest constructs the instance and injects `CachedMarkdownService` and `LIBRARY_SOURCE_OPTIONS` (`id`, `name`, `documentationUrl`, and `sources`). `NextjsAdapter` uses these options for source requests, URL normalization, and documentation-set labels. The supported optional catalog configuration currently describes an `llms-txt` source; Next.js requires it. Document URL rules remain in the adapter. `documentFormat` identifies the format returned by `fetchDocument`, after any conversion inside the adapter; the installed processing pipeline currently supports Markdown. Documentation base URLs must end with `/`.
 
 `SourcesModule` registers the configured definitions once for the application. `LibrarySourcesModule.register(definitions)` validates and snapshots definitions, creates an isolated Nest scope for each enabled library, and exports the resulting `LIBRARY_REGISTRATIONS`. `LibraryRegistry` consumes this collection without importing specific adapters. Libraries can share an adapter class while receiving separate instances and source options. No source requests are made during registration or library discovery.
 
@@ -134,24 +134,47 @@ All library tools resolve the requested ID through `LibraryRegistry`. Schemas va
 
 `ISourceAdapter.isValidPath(path)` defines source-specific syntax for document paths and subtree prefixes, independently of page existence. The common path schema rejects URLs, absolute paths, dot segments, encoded paths, query strings, fragments, backslashes, whitespace, and control characters. It allows filenames such as `guide/api.v2.md` when the selected adapter supports them. Next.js retains its stricter extensionless path rules. Invalid paths and prefixes return `INVALID_REQUEST` before source loading.
 
-Documentation, search, examples, and version responses use the requested registration's ID and metadata. Version listing still describes one `current` documentation set using the catalog's declared version. Disk cache entries and search state are scoped by library ID and documentation set ID. Each scope owns its section index, content hashes, and indexing queue; switching libraries preserves the other libraries' state. Historical set selection remains a follow-up stage.
+Documentation, search, and examples use the requested registration's ID. Documentation-set discovery delegates labels, source URLs, and version metadata to the adapter. Disk cache entries and search state are scoped by library ID and documentation set ID. Each scope owns its section index, content hashes, and indexing queue; switching libraries preserves the other libraries' state. Historical set selection remains a follow-up stage.
 
-Capabilities are resolved locally at startup from executable source operations and installed processing pipelines. `ISourceAdapter.fetchDocument`, `fetchCatalog`, and `isValidPath` are optional: implement the operations the source can actually provide. `fetchCatalog` must return the normalized `ISourceCatalog`, with document references, rather than raw source markup. There is no independently configurable `capabilities.tools` list.
+Capabilities are resolved locally at startup from executable source operations and installed processing pipelines. `ISourceAdapter.fetchDocument`, `fetchCatalog`, `isValidPath`, and `listDocumentationSets` are optional: implement the operations the source can actually provide. `fetchCatalog` returns the normalized `ISourceCatalog` with document references. `listDocumentationSets` independently returns available documentation collections; it may use static metadata or its own discovery source. There is no independently configurable `capabilities.tools` list.
 
 | Capability | Required behavior |
 | --- | --- |
 | `get_documentation` | A document loader, path validation, and a parser installed for the adapter's `documentFormat`. |
 | `search_docs` | All document requirements, normalized catalog discovery, and an installed index factory. |
 | `get_code_examples` | The same indexed pipeline; its parser returns sections and extracted code blocks for ranking. |
-| `list_versions` | Normalized catalog discovery, which currently supplies metadata for the `current` set. |
+| `list_versions` | The adapter's `listDocumentationSets()` operation. Catalog and document loaders are independent requirements. |
 
-`DocumentProcessingModule` installs the Markdown parser and section-index factory in `DocumentPipelineRegistry`. Registration binds those implementations together with the adapter's methods into `registration.operations`, then derives `capabilities.tools` from the resulting operation keys. Services execute those same operations, including their parser and index factory. A document-only source advertises only `get_documentation`; an unsupported document format cannot advertise document tools; a parser without an index cannot advertise search or example ranking.
+`DocumentProcessingModule` installs the Markdown parser and section-index factory in `DocumentPipelineRegistry`. Registration binds those implementations together with the adapter's methods into `registration.operations`, then derives `capabilities.tools` from the resulting operation keys. Services execute those same operations, including their parser and index factory. A source implementing only document loading and path validation advertises `get_documentation`; adding `listDocumentationSets` also enables `list_versions` without requiring a catalog. A catalog alone does not enable `list_versions`. An unsupported document format cannot advertise document tools; a parser without an index cannot advertise search or example ranking.
 
 The MCP tools remain registered globally. Calling an unavailable operation for an enabled library returns `TOOL_UNSUPPORTED` before fetching sources, parsing, sending progress, or allocating an index. Unknown and disabled libraries still return `INVALID_REQUEST`. Capability discovery performs no HTTP requests or indexing. Temporary source failures remain `SOURCE_ERROR` (or the existing stale/partial/index failure behavior); they do not change the library's advertised support.
 
 `historicalDocumentation` remains `false` because every installed operation routes only to the `current` documentation set. Adapter/configuration flags and catalog-declared version numbers cannot enable it; historical discovery and version-specific retrieval must be implemented together before it can become available.
 
 Nest injects `CACHE_SCOPE` into each library's `CachedMarkdownService`, so adapters receive a loader already bound to their library and the `current` documentation set. `load(url, signal?, options?)` retains its existing signature. Standalone callers must construct the loader with an explicit scope: `new CachedMarkdownService(store, { libraryId: "nextjs", documentationSetId: "current" })`. There is no shared default namespace. A source-declared `docVersion` remains metadata and does not change the documentation set ID or enable historical selection.
+
+## list_versions and documentation sets
+
+`list_versions` lists available documentation collections through `adapter.listDocumentationSets(signal?, { refresh })`. `VersionService` validates and forwards the adapter's result. It does not synthesize a set from a catalog, infer compatibility ranges, or enumerate package releases. The tool name remains unchanged for existing clients.
+
+```json
+{ "library": "nextjs", "refresh": false }
+```
+
+The response includes `library`, `documentationSets`, and optional `catalog` provenance. Each documentation set has:
+
+| Field | Meaning |
+| --- | --- |
+| `id` | Stable selector for a documentation collection. The installed retrieval operations support `current`. |
+| `label` | Display label supplied by the adapter. |
+| `channel` | `current` identifies the mutable current collection. Historical routing is not implemented. |
+| `declaredVersion` | Source-declared metadata, or `null`. It does not select a package release, pin page content, or establish compatibility. |
+| `versionRange` | An independently verified compatibility range, or `null`. It is never inferred from `declaredVersion`. |
+| `sourceUrl` | The collection's documentation URL, supplied by the adapter. |
+
+Next.js returns one set with `id: "current"`, its configured documentation URL, catalog `docVersion` as `declaredVersion` when present, and `versionRange: null`. Its adapter reads the catalog through the existing cache and returns catalog provenance, including freshness metadata. `refresh: true` rechecks that source. Other adapters may discover sets without a catalog; their response omits `catalog` when it was not used. An empty available-set result is preserved.
+
+Discovery responses are validated before they reach the client. Malformed metadata, duplicate IDs, and sets that the installed retrieval operations cannot select return `SOURCE_ERROR`. Currently only `id: "current"` with `channel: "current"` is accepted. A change to the source-declared version updates metadata within that same set and cache/index scope. In `get_code_examples`, the existing `version` argument selects a documentation-set ID; package numbers and compatibility ranges return `VERSION_UNAVAILABLE`.
 
 ## get_documentation
 
@@ -267,7 +290,7 @@ Extract complete code blocks from current official documentation using lexical k
 | --- | --- |
 | `library` | Required; an enabled identifier from `list_libraries`. Discover capabilities there as well. |
 | `query` | Required lexical keywords, 1–256 characters; use documentation-language keywords and exact API names. |
-| `version` | Defaults to `current`, the only available documentation set. Historical versions, exact release numbers, and ranges return `VERSION_UNAVAILABLE` before downloading sources. |
+| `version` | Documentation-set ID from `list_versions`; defaults to `current`. Package release numbers and compatibility ranges are not selectors. Unavailable sets return `VERSION_UNAVAILABLE` before downloading sources. |
 | `filters.languages` | Optional nonempty list of up to 10 fence languages, matched case-insensitively. `js`/`javascript` and `ts`/`typescript` are aliases; `jsx` and `tsx` remain distinct. Untagged blocks are included only when no language filter is set. |
 | `filters.path_prefix` | Optional exact page or subtree within the selected library's documentation. Adapter path rules apply. Restricts downloads as well as results. |
 | `limit` | Number of code blocks to return, 1–20; defaults to 5. Filters apply before ranking and limiting. |

@@ -14,9 +14,12 @@ export function createLibraryRegistration(
 ): ILibraryRegistration {
   // TODO: improve readability
   if (
-    [adapter.isValidPath, adapter.fetchCatalog, adapter.fetchDocument].some(
-      (method) => method !== undefined && typeof method !== "function",
-    ) ||
+    [
+      adapter.isValidPath,
+      adapter.fetchCatalog,
+      adapter.fetchDocument,
+      adapter.listDocumentationSets,
+    ].some((method) => method !== undefined && typeof method !== "function") ||
     (adapter.documentFormat !== undefined &&
       (typeof adapter.documentFormat !== "string" ||
         !adapter.documentFormat.trim()))

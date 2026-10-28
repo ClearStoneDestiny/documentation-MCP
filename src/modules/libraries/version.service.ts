@@ -34,10 +34,19 @@ export class VersionService {
       throw new DocumentationError("INVALID_REQUEST", "Unsupported library.");
     }
 
+    const operation = registration.operations.list_versions;
+
+    if (!operation) {
+      throw new DocumentationError(
+        "TOOL_UNSUPPORTED",
+        `list_versions is not supported for library ${registration.id}.`,
+      );
+    }
+
     let catalog: ISourceCatalog;
 
     try {
-      catalog = await registration.adapter.fetchCatalog(signal, {
+      catalog = await operation.fetchCatalog(signal, {
         refresh: request.refresh,
       });
     } catch (cause: any) {

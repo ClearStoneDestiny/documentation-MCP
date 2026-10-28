@@ -103,7 +103,7 @@ export class CachedMarkdownService {
         }
 
         throw new SourceHttpError(
-          `Failed to fetch Next.js documentation (${response.status}): ${url}`,
+          `Failed to fetch documentation (${response.status}): ${url}`,
           response.status === 408 ||
             response.status === 429 ||
             response.status >= 500,
@@ -118,7 +118,7 @@ export class CachedMarkdownService {
 
       if (contentType !== "text/markdown" && contentType !== "text/plain") {
         throw new SourceHttpError(
-          `Expected Markdown from Next.js, received ${contentType ?? "no content type"}: ${url}`,
+          `Expected Markdown, received ${contentType ?? "no content type"}: ${url}`,
           false,
         );
       }
@@ -128,7 +128,7 @@ export class CachedMarkdownService {
       signal?.throwIfAborted();
 
       if (!content.trim()) {
-        throw new SourceHttpError(`Empty Next.js documentation: ${url}`, false);
+        throw new SourceHttpError(`Empty documentation: ${url}`, false);
       }
 
       const entry: TCacheEntry = {

@@ -6,6 +6,7 @@ import { SearchModule } from "../search/search.module.js";
 import { SearchDocsTool } from "./tools/search-docs.tool.js";
 import { LibrariesModule } from "../libraries/libraries.module.js";
 import { ListVersionsTool } from "./tools/list-versions.tool.js";
+import { ListLibrariesTool } from "./tools/list-libraries.tool.js";
 
 @Module({
   imports: [DocumentationModule, SearchModule, LibrariesModule],
@@ -14,6 +15,7 @@ import { ListVersionsTool } from "./tools/list-versions.tool.js";
     GetDocumentationTool,
     SearchDocsTool,
     ListVersionsTool,
+    ListLibrariesTool,
   ],
 })
 export class McpModule {}

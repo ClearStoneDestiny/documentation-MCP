@@ -49,6 +49,7 @@ for (const [name, mode] of [
           expect.objectContaining({ name: "get_documentation" }),
           expect.objectContaining({ name: "search_docs" }),
           expect.objectContaining({ name: "list_versions" }),
+          expect.objectContaining({ name: "list_libraries" }),
         ]),
       );
 
@@ -82,6 +83,35 @@ for (const [name, mode] of [
         arguments: { library: "react" },
       });
       expect(invalidVersions.isError).toBe(true);
+
+      const libraries = await client.callTool({
+        name: "list_libraries",
+        arguments: {},
+      });
+      expect(libraries.isError).not.toBe(true);
+      expect(libraries.structuredContent).toEqual({
+        libraries: [
+          {
+            id: "nextjs",
+            name: "Next.js",
+            documentationUrl: "https://nextjs.org/docs/",
+            capabilities: {
+              tools: ["get_documentation", "search_docs", "list_versions"],
+              historicalDocumentation: false,
+            },
+          },
+        ],
+      });
+      expect(JSON.parse(libraries.content[0].text)).toEqual(
+        libraries.structuredContent,
+      );
+
+      const invalidLibraries = await client.callTool({
+        name: "list_libraries",
+        arguments: { filter: " " },
+      });
+      expect(invalidLibraries.isError).toBe(true);
+      expect(errors, "stdout must contain only valid MCP messages").toEqual([]);
     },
   );
 }

@@ -8,6 +8,11 @@ export const nextjsSourceOptions = {
   sources: LIBRARY_DEFINITIONS.nextjs.sources,
 };
 
+export const nextjsCacheScope = {
+  libraryId: nextjsSourceOptions.id,
+  documentationSetId: "current",
+};
+
 export function createRegistry(adapter, definition = LIBRARY_DEFINITIONS.nextjs) {
   return new LibraryRegistry([
     createLibraryRegistration(adapter.libraryId, definition, adapter),

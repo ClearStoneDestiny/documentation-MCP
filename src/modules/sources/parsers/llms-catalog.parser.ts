@@ -21,13 +21,16 @@ function resolveDocumentUrl(
 
   const base = new URL(options.documentationUrl);
 
-  // TODO: improve readability
+  const isSameOrigin = url.origin === base.origin;
+  const hasCredentials = Boolean(url.username || url.password);
+  const hasQuery = Boolean(url.search);
+  const isWithinDocumentationPath = url.pathname.startsWith(base.pathname);
+
   if (
-    url.origin !== base.origin ||
-    url.username ||
-    url.password ||
-    url.search ||
-    !url.pathname.startsWith(base.pathname)
+    !isSameOrigin ||
+    hasCredentials ||
+    hasQuery ||
+    !isWithinDocumentationPath
   ) {
     return undefined;
   }

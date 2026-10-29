@@ -1,7 +1,8 @@
 {
   "name": "documentation-mcp",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
+  "license": "MIT",
   "description": "A local MCP server for version-aware library and framework documentation.",
   "type": "module",
   "bin": {
@@ -15,6 +16,7 @@
     "node": ">=22.19.0"
   },
   "scripts": {
+    "prepack": "npm run build",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
     "dev": "tsx watch src/main.ts",

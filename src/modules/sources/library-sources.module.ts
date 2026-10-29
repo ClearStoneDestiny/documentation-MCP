@@ -4,7 +4,10 @@ import { CACHE_SCOPE } from "../cache/constants/cache-scope.constant.js";
 import { CURRENT_DOCUMENTATION_SET_ID } from "../libraries/constants/documentation-set.constant.js";
 import type { TLibraryDefinitions } from "../libraries/constants/library-definitions.constant.js";
 import { LIBRARY_REGISTRATIONS } from "../libraries/constants/library-registrations.constant.js";
-import { LIBRARY_ID_PATTERN } from "../libraries/constants/library.constant.js";
+import {
+  LIBRARY_ID_PATTERN,
+  MAX_LIBRARY_ID_LENGTH,
+} from "../libraries/constants/library.constant.js";
 import type { ILibraryDefinition } from "../libraries/interfaces/library-definition.interface.js";
 import type { TLibraryId } from "../libraries/interfaces/library-id.type.js";
 import { createLibraryRegistration } from "../libraries/utils/create-library-registration.util.js";
@@ -113,19 +116,34 @@ function validateDefinition(id: string, definition: ILibraryDefinition): void {
     return new Error(`Invalid library definition: ${id}`);
   };
 
-  // TODO: improve readability of condition
-  if (
-    !LIBRARY_ID_PATTERN.test(id) ||
-    id.length > 100 ||
-    !definition ||
-    typeof definition.enabled !== "boolean" ||
-    typeof definition.name !== "string" ||
-    !definition.name.trim() ||
-    typeof definition.adapter !== "function" ||
-    !definition.adapter.prototype ||
-    !definition.sources ||
-    typeof definition.sources !== "object"
-  ) {
+  const hasValidId =
+    LIBRARY_ID_PATTERN.test(id) && id.length <= MAX_LIBRARY_ID_LENGTH;
+
+  if (!hasValidId || !definition) {
+    throw invalid();
+  }
+
+  const hasValidMetadata =
+    typeof definition.enabled === "boolean" &&
+    typeof definition.name === "string" &&
+    Boolean(definition.name.trim());
+
+  if (!hasValidMetadata) {
+    throw invalid();
+  }
+
+  const hasValidAdapter =
+    typeof definition.adapter === "function" &&
+    Boolean(definition.adapter.prototype);
+
+  if (!hasValidAdapter) {
+    throw invalid();
+  }
+
+  const hasValidSources =
+    definition.sources && typeof definition.sources === "object";
+
+  if (!hasValidSources) {
     throw invalid();
   }
 
@@ -140,23 +158,28 @@ function validateDefinition(id: string, definition: ILibraryDefinition): void {
     } catch {
       throw invalid();
     }
-    // TODO: improve readability
-    if (
-      !["https:", "http:"].includes(url.protocol) ||
-      url.username ||
-      url.password ||
-      url.hash
-    ) {
+
+    const hasSupportedProtocol = ["https:", "http:"].includes(url.protocol);
+    const hasCredentials = Boolean(url.username || url.password);
+    const hasFragment = Boolean(url.hash);
+
+    if (!hasSupportedProtocol || hasCredentials || hasFragment) {
       throw invalid();
     }
   }
-  //TODO: improve readability
-  if (
-    !definition.documentationUrl.endsWith("/") ||
-    new URL(definition.documentationUrl).search ||
-    (definition.sources.catalog &&
-      definition.sources.catalog.format !== "llms-txt")
-  ) {
+
+  const hasValidDocumentationUrl =
+    definition.documentationUrl.endsWith("/") &&
+    !new URL(definition.documentationUrl).search;
+
+  if (!hasValidDocumentationUrl) {
+    throw invalid();
+  }
+
+  const catalog = definition.sources.catalog;
+  const hasSupportedCatalogFormat = !catalog || catalog.format === "llms-txt";
+
+  if (!hasSupportedCatalogFormat) {
     throw invalid();
   }
 }

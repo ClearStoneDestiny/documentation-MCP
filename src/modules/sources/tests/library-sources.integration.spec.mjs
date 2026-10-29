@@ -74,7 +74,7 @@ test("the application shares one configured Next.js adapter without fetching sou
   const registry = app.get(LibraryRegistry);
   expect(registry.get("nextjs").adapter).toBeInstanceOf(NextjsAdapter);
   expect(() => app.get(NextjsAdapter)).toThrow();
-  expect(app.get(LibraryService).listLibraries({}).libraries).toHaveLength(1);
+  expect(app.get(LibraryService).listLibraries({}).libraries).toHaveLength(2);
   expect(fetch).not.toHaveBeenCalled();
 });
 
@@ -249,7 +249,7 @@ test("Nest discovers documentation sets without requiring a catalog, parser, or 
     label: "Live handbook",
     declaredVersion: null,
   });
-  
+
   expect(result).not.toHaveProperty("catalog");
   expect(fetch).not.toHaveBeenCalled();
 });
@@ -416,14 +416,14 @@ test("rejects an adapter whose library ID differs from its configuration key", a
   ).rejects.toThrow("Adapter library ID does not match its definition: nextjs");
 });
 
-test("the complete MCP application boots with Next.js disabled and rejects every library tool", async () => {
+test("the complete MCP application boots with all libraries disabled and rejects every library tool", async () => {
   const script = `
     import 'reflect-metadata';
     import { NestFactory } from '@nestjs/core';
     import { Client } from '@modelcontextprotocol/client';
     import { InMemoryTransport } from '@modelcontextprotocol/server';
     const { LIBRARY_DEFINITIONS } = await import('./dist/modules/libraries/constants/library-definitions.constant.js');
-    LIBRARY_DEFINITIONS.nextjs.enabled = false;
+    for (const definition of Object.values(LIBRARY_DEFINITIONS)) definition.enabled = false;
     const { AppModule } = await import('./dist/app.module.js');
     const { McpService } = await import('./dist/modules/mcp/mcp.service.js');
     let requests = 0;

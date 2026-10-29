@@ -2,7 +2,7 @@
 
 A local, stdio-based MCP server for official, version-aware library and framework documentation.
 
-The project currently exposes `get_server_info`, `list_libraries`, `list_versions`, `search_docs`, `get_documentation`, and `get_code_examples` over stdio using Nest.js standalone and the official MCP TypeScript SDK v2. A Next.js source adapter, persistent disk cache, Markdown parser, and section index support searching current official documentation, retrieving matching sections, and extracting code examples with freshness metadata. Historical version selection, recursive catalog discovery, resources, and prompts are planned but not implemented yet.
+The project currently exposes `get_server_info`, `list_libraries`, `list_versions`, `search_docs`, `get_documentation`, and `get_code_examples` over stdio using Nest.js standalone and the official MCP TypeScript SDK v2. Next.js and React source adapters, a persistent disk cache, Markdown parser, and section index support searching current official documentation, retrieving matching sections, and extracting code examples with freshness metadata. Both libraries are enabled by default. Historical version selection, recursive catalog discovery, resources, and prompts are planned but not implemented yet.
 
 ## Requirements
 
@@ -94,17 +94,21 @@ src/
       sources.module.ts # Source adapter providers
       interfaces/       # Adapter, catalog, page reference, and raw document contracts
       adapters/
-        nextjs.adapter.ts # Fetch the Next.js catalog and individual Markdown pages
+        llms-markdown.adapter.ts # Shared link-list discovery and .md page loading
+        nextjs.adapter.ts # Next.js path rules and Nest dependency injection
+        react.adapter.ts  # React learn/reference path rules and Nest dependencies
       constants/
         nextjs.constant.ts # Shared source URLs and supported path format
+        react.constant.ts  # React source URLs and supported path format
       services/
         cached-markdown.service.ts # TTL, conditional HTTP, and stale fallback
       parsers/
-        nextjs-catalog.parser.ts # Parse the Next.js llms.txt link list
+        llms-catalog.parser.ts   # Shared link-list parser with source URL/path rules
+        nextjs-catalog.parser.ts # Existing Next.js parser entry point
       tests/            # Adapter and catalog parser tests with local fixtures
 ```
 
-The Next.js adapter accepts a path relative to `/docs`, for example `app/getting-started/caching`. It loads the official `.md` URL through the disk cache; network requests have a 10-second timeout and support caller cancellation. Returned documents retain the original Markdown, canonical page URL, original download time, and cache metadata. Current documentation URLs are mutable; `fetchedAt` is a retrieval timestamp, not a framework version or immutable source revision. Unit tests use mocked HTTP responses and temporary directories, without accessing the user's default cache.
+The Next.js adapter accepts a path relative to `/docs`, for example `app/getting-started/caching`. React paths are relative to `https://react.dev/`, such as `learn` and `reference/react/useState`. Both adapters load the official `.md` URL through the disk cache; network requests have a 10-second timeout and support caller cancellation. Returned documents retain the original Markdown, canonical page URL, original download time, and cache metadata. Current documentation URLs are mutable; `fetchedAt` is a retrieval timestamp, not a framework version or immutable source revision. Automated tests use mocked HTTP responses and temporary directories, without accessing the user's default cache or the network.
 
 ## Library definitions and registration
 
@@ -121,10 +125,19 @@ export const LIBRARY_DEFINITIONS = {
     },
     adapter: NextjsAdapter,
   },
+  react: {
+    enabled: true,
+    name: "React",
+    documentationUrl: REACT_DOCS_BASE_URL,
+    sources: {
+      catalog: { format: "llms-txt", url: REACT_CATALOG_URL },
+    },
+    adapter: ReactAdapter,
+  },
 } as const satisfies Record<string, ILibraryDefinition>;
 ```
 
-The object key is the library ID. `adapter` is a class reference; Nest constructs the instance and injects `CachedMarkdownService` and `LIBRARY_SOURCE_OPTIONS` (`id`, `name`, `documentationUrl`, and `sources`). `NextjsAdapter` uses these options for source requests, URL normalization, and documentation-set labels. The supported optional catalog configuration currently describes an `llms-txt` source; Next.js requires it. Document URL rules remain in the adapter. `documentFormat` identifies the format returned by `fetchDocument`, after any conversion inside the adapter; the installed processing pipeline currently supports Markdown. Documentation base URLs must end with `/`.
+The object key is the library ID. `adapter` is a class reference; Nest constructs the instance and injects `CachedMarkdownService` and `LIBRARY_SOURCE_OPTIONS` (`id`, `name`, `documentationUrl`, and `sources`). `LlmsMarkdownAdapter` uses these options for source requests, URL normalization, and documentation-set labels. Next.js and React extend it and supply their own path validation. The supported optional catalog configuration currently describes an `llms-txt` source; both built-in adapters require it. `documentFormat` identifies the format returned by `fetchDocument`, after any conversion inside the adapter; the installed processing pipeline currently supports Markdown. Documentation base URLs must end with `/`.
 
 `SourcesModule` registers the configured definitions once for the application. `LibrarySourcesModule.register(definitions)` validates and snapshots definitions, creates an isolated Nest scope for each enabled library, and exports the resulting `LIBRARY_REGISTRATIONS`. `LibraryRegistry` consumes this collection without importing specific adapters. Libraries can share an adapter class while receiving separate instances and source options. No source requests are made during registration or library discovery.
 
@@ -191,7 +204,7 @@ Example tool arguments:
 
 | Parameter | Meaning |
 | --- | --- |
-| `library` | Required; an enabled identifier from `list_libraries`. The default configuration includes `nextjs`. |
+| `library` | Required; an enabled identifier from `list_libraries`. The default configuration includes `nextjs` and `react`. |
 | `path` | Required; relative page path supported by the selected adapter. Next.js paths are relative to `/docs` without a `.md` suffix. |
 | `section_id` | Optional ID from the response's `sections` outline. Returns the section and all its subsections. The synthetic Introduction returns only its own preamble. |
 | `max_chars` | Markdown size limit, from 256 to 40,000; defaults to 12,000. Metadata and the section outline are additional. |
@@ -372,6 +385,32 @@ try {
 Fetching the catalog does not download document contents. `fetchDocument(path, signal?, options?)` also accepts `{ refresh: true }` as its third argument. Source adapters perform network requests only when called, so application startup remains local.
 
 Discovery currently covers pages directly listed by the root index. Links to sub-indexes such as `/docs/pages/llms.txt` are excluded from document entries; recursive catalog discovery is a separate follow-up.
+
+## React catalog and extension contract
+
+`ReactAdapter` reads the official [React catalog](https://react.dev/llms.txt) and loads pages through their `.md` endpoints, such as [useState Markdown](https://react.dev/reference/react/useState.md). Supported paths start with `learn` or `reference`, use the original API-name case, and omit `.md`. `get_documentation` returns canonical `react.dev` page URLs. Blog URLs, version archives, external sites, query URLs, and nested catalogs are excluded from discovery.
+
+All four library operations are supported for React: document retrieval, section search, extracted code examples, and documentation-set discovery. Its available set is `current`; absent source version metadata produces `declaredVersion: null`, and no compatibility range or historical support is inferred. React Markdown contains JSX/MDX-looking tags and heading annotations. The shared CommonMark parser preserves that markup without evaluating it; returned section IDs remain internal selectors.
+
+For a narrow React search or example request:
+
+```json
+{
+  "library": "react",
+  "query": "useState",
+  "path_prefix": "reference/react/useState"
+}
+```
+
+Use `filters.path_prefix` instead of `path_prefix` with `get_code_examples`. Direct retrieval uses `path: "reference/react/useState"`.
+
+To add another library:
+
+1. Implement the supported `ISourceAdapter` operations. A source with a link-list catalog, extensionless canonical URLs, and `.md` bodies can extend `LlmsMarkdownAdapter`; its concrete Nest provider supplies dependencies and `isValidPath`. Other sources can implement the interface directly.
+2. Add one keyed entry to `LIBRARY_DEFINITIONS` with metadata, source settings, and the adapter class. Common services and MCP tools select it through the registry.
+3. Add local source fixtures and exercise every advertised operation through MCP, including retrieval arguments, source failures, and the disabled-library case.
+
+`configured-libraries.integration.spec.mjs` runs both actual configured adapters through the same services and MCP tools. It verifies discovery without HTTP at startup, current-set metadata, search and code extraction, hash-checked retrieval, independent cache/index state during React updates and removal, and disabling React while Next.js continues to work. The generic source, cache, and search contract suites cover identical paths/URLs, cancellation, and shared adapter classes as well.
 
 ## Markdown document parsing
 

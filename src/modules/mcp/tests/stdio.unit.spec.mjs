@@ -69,19 +69,19 @@ for (const [name, mode] of [
 
       const invalid = await client.callTool({
         name: "get_documentation",
-        arguments: { library: "react", path: "app/guides/example" },
+        arguments: { library: "unknown-library", path: "app/guides/example" },
       });
       expect(invalid.isError).toBe(true);
 
       const invalidSearch = await client.callTool({
         name: "search_docs",
-        arguments: { library: "react", query: "caching" },
+        arguments: { library: "unknown-library", query: "caching" },
       });
       expect(invalidSearch.isError).toBe(true);
 
       const invalidVersions = await client.callTool({
         name: "list_versions",
-        arguments: { library: "react" },
+        arguments: { library: "unknown-library" },
       });
       expect(invalidVersions.isError).toBe(true);
 
@@ -96,6 +96,21 @@ for (const [name, mode] of [
             id: "nextjs",
             name: "Next.js",
             documentationUrl: "https://nextjs.org/docs/",
+            capabilities: {
+              tools: [
+                "get_documentation",
+                "search_docs",
+                "list_versions",
+                "get_code_examples",
+              ],
+              historicalDocumentation: false,
+            },
+          },
+
+          {
+            id: "react",
+            name: "React",
+            documentationUrl: "https://react.dev/",
             capabilities: {
               tools: [
                 "get_documentation",

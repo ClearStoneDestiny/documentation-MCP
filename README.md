@@ -6,7 +6,34 @@ Give your AI assistant access to official **Next.js** and **React** documentatio
 
 Requires **Node.js 22.19.0 or newer**, npm, and an MCP client with **stdio** support.
 
-### 1. Build the server
+### Codex
+
+Once this project is published to npm as `documentation-mcp`, connect it with:
+
+```sh
+codex mcp add documentation -- npx -y documentation-mcp
+```
+
+Codex saves the configuration and launches the server over stdio when needed. No global installation, separate server process, port, or API key is required. See the [official MCP setup guide](https://learn.chatgpt.com/docs/extend/mcp).
+
+The command above requires a published package from this project. Until the first npm release, use the source setup below.
+
+### Other MCP clients
+
+For a published package, clients that accept `mcpServers` JSON can use:
+
+```json
+{
+  "mcpServers": {
+    "documentation": {
+      "command": "npx",
+      "args": ["-y", "documentation-mcp"]
+    }
+  }
+}
+```
+
+### Run from source
 
 ```sh
 git clone https://github.com/ClearStoneDestiny/documentation-MCP.git
@@ -15,26 +42,15 @@ npm ci
 npm run build
 ```
 
-### 2. Add it to your MCP client
+Register your local build with Codex, replacing the path with your checkout's absolute path:
 
-Add the following server entry to your client's MCP configuration:
-
-```json
-{
-  "mcpServers": {
-    "documentation": {
-      "command": "node",
-      "args": ["/absolute/path/to/documentation-MCP/dist/main.js"]
-    }
-  }
-}
+```sh
+codex mcp add documentation -- node /absolute/path/to/documentation-MCP/dist/main.js
 ```
 
-Replace `/absolute/path/to/documentation-MCP` with the full path to your checkout. The configuration file's location depends on your client; for clients with a server setup form, select **stdio**, enter `node` as the command, and the full path to `dist/main.js` as its argument.
+For other clients, use `node` as the command and the absolute path to `dist/main.js` as its argument. If your client cannot find Node.js, use the full path to the Node.js executable.
 
-Your client starts the server automatically. No separate server process, port, or API key is needed. Use `node` directly in the configuration so stdout carries only MCP messages. If your client cannot find Node.js, use the full path to the Node.js executable as `command`.
-
-### 3. Start using it
+### Start using it
 
 Restart your client or reload its MCP servers, then check that the `documentation` tools are available. Try asking:
 

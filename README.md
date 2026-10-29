@@ -1,36 +1,23 @@
 # Documentation MCP
 
-A local, stdio-based MCP server for official, version-aware library and framework documentation.
+Give your AI assistant access to official **Next.js** and **React** documentation: search topics, read relevant sections, and retrieve code examples directly from the source.
 
-The project currently exposes `get_server_info`, `list_libraries`, `list_versions`, `search_docs`, `get_documentation`, and `get_code_examples` over stdio using Nest.js standalone and the official MCP TypeScript SDK v2. Next.js and React source adapters, a persistent disk cache, Markdown parser, and section index support searching current official documentation, retrieving matching sections, and extracting code examples with freshness metadata. Both libraries are enabled by default. Historical version selection, recursive catalog discovery, resources, and prompts are planned but not implemented yet.
+## Install and connect
 
-## Requirements
+Requires **Node.js 22.19.0 or newer**, npm, and an MCP client with **stdio** support.
 
-- Node.js 22.19.0 or newer
-- npm
-
-## Development
+### 1. Build the server
 
 ```sh
+git clone https://github.com/ClearStoneDestiny/documentation-MCP.git
+cd documentation-MCP
 npm ci
 npm run build
-npm start
 ```
 
-The server waits for MCP messages on stdin. It does not start an HTTP listener. Server logs go to stderr; stdout is reserved for MCP JSON-RPC messages.
+### 2. Add it to your MCP client
 
-```sh
-npm run dev        # Run TypeScript with automatic restart
-npm run typecheck  # Check TypeScript types
-npm test          # Build and run cache, parser, adapter, search, and MCP tests with Vitest
-npm run inspector # Build and open MCP Inspector
-```
-
-Use explicit `@Inject(...)` tokens for future constructor dependencies: the `tsx` development runner does not emit decorator type metadata.
-
-## Connect an MCP client
-
-Build first, then configure a client that supports this JSON configuration shape:
+Add the following server entry to your client's MCP configuration:
 
 ```json
 {
@@ -43,396 +30,77 @@ Build first, then configure a client that supports this JSON configuration shape
 }
 ```
 
-Replace the path with your local checkout. Launch `node` directly for MCP connections so npm script banners do not enter stdout. The SDK stdio entry point supports both current protocol discovery and legacy initialization.
+Replace `/absolute/path/to/documentation-MCP` with the full path to your checkout. The configuration file's location depends on your client; for clients with a server setup form, select **stdio**, enter `node` as the command, and the full path to `dist/main.js` as its argument.
 
-## Structure
+Your client starts the server automatically. No separate server process, port, or API key is needed. Use `node` directly in the configuration so stdout carries only MCP messages. If your client cannot find Node.js, use the full path to the Node.js executable as `command`.
 
-```text
-src/
-  main.ts             # Standalone bootstrap, stderr logging, shutdown
-  app.module.ts       # Root Nest module
-  modules/
-    cache/
-      cache.module.ts          # Cache configuration and disk storage provider
-      utils/                   # Environment configuration and content hashing
-      file-cache.service.ts    # Validated reads and atomic JSON writes
-      schemas/                 # Versioned storage records and response metadata
-      tests/                   # Disk persistence and corruption checks
-    code-examples/
-      code-examples.module.ts  # Library registry dependencies
-      code-examples.service.ts # Extract, filter, and rank complete code blocks
-      schemas/                 # get_code_examples input/output contracts
-      tests/                   # Extraction, filtering, failures, and cancellation
-    documentation/
-      documentation.module.ts # Registry, processing, and documentation providers
-      document-processing.module.ts # Installed parser and index implementations
-      document-pipeline-registry.service.ts # Processing pipelines by source format
-      documentation.service.ts # Fetch, parse, select, and paginate documentation
-      schemas/                 # Shared get_documentation input/output contracts
-      errors/                  # Recoverable documentation errors
-      interfaces/              # Parsed document, sections, examples, and source ranges
-      parsers/
-        markdown-document.parser.ts # CommonMark and YAML frontmatter parsing
-      tests/                   # Parser checks and a local Markdown fixture
-    mcp/
-      mcp.module.ts     # MCP providers
-      mcp.service.ts    # Server factory and stdio lifecycle
-      tools/
-        get-documentation.tool.ts # MCP registration and result/error mapping
-        search-docs.tool.ts       # Search registration and indexing progress
-        get-code-examples.tool.ts # Code example registration and progress
-      tests/
-        stdio.unit.spec.mjs # Process-level protocol checks
-    search/
-      search.module.ts  # Source adapter and parser dependencies
-      search.service.ts # Synchronize cached pages, update changed sections, report coverage
-      section-index.ts  # Inverted index and weighted BM25 ranking
-      schemas/          # search_docs input/output contracts
-      utils/            # API-aware tokenization and bounded snippets
-      tests/            # Ranking, updates, failures, scope, and cancellation
-    sources/
-      sources.module.ts # Source adapter providers
-      interfaces/       # Adapter, catalog, page reference, and raw document contracts
-      adapters/
-        llms-markdown.adapter.ts # Shared link-list discovery and .md page loading
-        nextjs.adapter.ts # Next.js path rules and Nest dependency injection
-        react.adapter.ts  # React learn/reference path rules and Nest dependencies
-      constants/
-        nextjs.constant.ts # Shared source URLs and supported path format
-        react.constant.ts  # React source URLs and supported path format
-      services/
-        cached-markdown.service.ts # TTL, conditional HTTP, and stale fallback
-      parsers/
-        llms-catalog.parser.ts   # Shared link-list parser with source URL/path rules
-        nextjs-catalog.parser.ts # Existing Next.js parser entry point
-      tests/            # Adapter and catalog parser tests with local fixtures
-```
+### 3. Start using it
 
-The Next.js adapter accepts a path relative to `/docs`, for example `app/getting-started/caching`. React paths are relative to `https://react.dev/`, such as `learn` and `reference/react/useState`. Both adapters load the official `.md` URL through the disk cache; network requests have a 10-second timeout and support caller cancellation. Returned documents retain the original Markdown, canonical page URL, original download time, and cache metadata. Current documentation URLs are mutable; `fetchedAt` is a retrieval timestamp, not a framework version or immutable source revision. Automated tests use mocked HTTP responses and temporary directories, without accessing the user's default cache or the network.
+Restart your client or reload its MCP servers, then check that the `documentation` tools are available. Try asking:
 
-## Library definitions and registration
+- “Use Documentation MCP to explain React's useState and show examples from the official docs.”
+- “Search the Next.js docs for caching and revalidation.”
 
-`src/modules/libraries/constants/library-definitions.constant.ts` is the entry point for library configuration:
+The first search downloads the selected documentation pages; later requests reuse the local cache. Narrowing a search to a page or section of the documentation reduces the initial download.
 
-```ts
-export const LIBRARY_DEFINITIONS = {
-  nextjs: {
-    enabled: true,
-    name: "Next.js",
-    documentationUrl: NEXTJS_DOCS_BASE_URL,
-    sources: {
-      catalog: { format: "llms-txt", url: NEXTJS_CATALOG_URL },
-    },
-    adapter: NextjsAdapter,
-  },
-  react: {
-    enabled: true,
-    name: "React",
-    documentationUrl: REACT_DOCS_BASE_URL,
-    sources: {
-      catalog: { format: "llms-txt", url: REACT_CATALOG_URL },
-    },
-    adapter: ReactAdapter,
-  },
-} as const satisfies Record<string, ILibraryDefinition>;
-```
+## Supported libraries
 
-The object key is the library ID. `adapter` is a class reference; Nest constructs the instance and injects `CachedMarkdownService` and `LIBRARY_SOURCE_OPTIONS` (`id`, `name`, `documentationUrl`, and `sources`). `LlmsMarkdownAdapter` uses these options for source requests, URL normalization, and documentation-set labels. Next.js and React extend it and supply their own path validation. The supported optional catalog configuration currently describes an `llms-txt` source; both built-in adapters require it. `documentFormat` identifies the format returned by `fetchDocument`, after any conversion inside the adapter; the installed processing pipeline currently supports Markdown. Documentation base URLs must end with `/`.
-
-`SourcesModule` registers the configured definitions once for the application. `LibrarySourcesModule.register(definitions)` validates and snapshots definitions, creates an isolated Nest scope for each enabled library, and exports the resulting `LIBRARY_REGISTRATIONS`. `LibraryRegistry` consumes this collection without importing specific adapters. Libraries can share an adapter class while receiving separate instances and source options. No source requests are made during registration or library discovery.
-
-Set `enabled: false`, rebuild when running compiled code, and restart the server to disable a library. It is omitted from `list_libraries`, its adapter is not instantiated, and library tools reject requests without fetching sources. Disabling every library is supported. Existing cached files are preserved. There is no background indexing; search indexing runs on demand. Editing configuration objects after registration does not change the running registrations.
-
-All library tools resolve the requested ID through `LibraryRegistry`. Schemas validate identifier syntax without importing built-in definitions or enumerating enabled libraries. Unknown and disabled IDs return `INVALID_REQUEST` with `Unsupported library.` before loading sources. `list_libraries` is the source of available IDs; there is no separate `LIBRARY_IDS` list or concrete-adapter DI alias.
-
-`ISourceAdapter.isValidPath(path)` defines source-specific syntax for document paths and subtree prefixes, independently of page existence. The common path schema rejects URLs, absolute paths, dot segments, encoded paths, query strings, fragments, backslashes, whitespace, and control characters. It allows filenames such as `guide/api.v2.md` when the selected adapter supports them. Next.js retains its stricter extensionless path rules. Invalid paths and prefixes return `INVALID_REQUEST` before source loading.
-
-Documentation, search, and examples use the requested registration's ID. Documentation-set discovery delegates labels, source URLs, and version metadata to the adapter. Disk cache entries and search state are scoped by library ID and documentation set ID. Each scope owns its section index, content hashes, and indexing queue; switching libraries preserves the other libraries' state. Historical set selection remains a follow-up stage.
-
-Capabilities are resolved locally at startup from executable source operations and installed processing pipelines. `ISourceAdapter.fetchDocument`, `fetchCatalog`, `isValidPath`, and `listDocumentationSets` are optional: implement the operations the source can actually provide. `fetchCatalog` returns the normalized `ISourceCatalog` with document references. `listDocumentationSets` independently returns available documentation collections; it may use static metadata or its own discovery source. There is no independently configurable `capabilities.tools` list.
-
-| Capability | Required behavior |
-| --- | --- |
-| `get_documentation` | A document loader, path validation, and a parser installed for the adapter's `documentFormat`. |
-| `search_docs` | All document requirements, normalized catalog discovery, and an installed index factory. |
-| `get_code_examples` | The same indexed pipeline; its parser returns sections and extracted code blocks for ranking. |
-| `list_versions` | The adapter's `listDocumentationSets()` operation. Catalog and document loaders are independent requirements. |
-
-`DocumentProcessingModule` installs the Markdown parser and section-index factory in `DocumentPipelineRegistry`. Registration binds those implementations together with the adapter's methods into `registration.operations`, then derives `capabilities.tools` from the resulting operation keys. Services execute those same operations, including their parser and index factory. A source implementing only document loading and path validation advertises `get_documentation`; adding `listDocumentationSets` also enables `list_versions` without requiring a catalog. A catalog alone does not enable `list_versions`. An unsupported document format cannot advertise document tools; a parser without an index cannot advertise search or example ranking.
-
-The MCP tools remain registered globally. Calling an unavailable operation for an enabled library returns `TOOL_UNSUPPORTED` before fetching sources, parsing, sending progress, or allocating an index. Unknown and disabled libraries still return `INVALID_REQUEST`. Capability discovery performs no HTTP requests or indexing. Temporary source failures remain `SOURCE_ERROR` (or the existing stale/partial/index failure behavior); they do not change the library's advertised support.
-
-`historicalDocumentation` remains `false` because every installed operation routes only to the `current` documentation set. Adapter/configuration flags and catalog-declared version numbers cannot enable it; historical discovery and version-specific retrieval must be implemented together before it can become available.
-
-Nest injects `CACHE_SCOPE` into each library's `CachedMarkdownService`, so adapters receive a loader already bound to their library and the `current` documentation set. `load(url, signal?, options?)` retains its existing signature. Standalone callers must construct the loader with an explicit scope: `new CachedMarkdownService(store, { libraryId: "nextjs", documentationSetId: "current" })`. There is no shared default namespace. A source-declared `docVersion` remains metadata and does not change the documentation set ID or enable historical selection.
-
-## list_versions and documentation sets
-
-`list_versions` lists available documentation collections through `adapter.listDocumentationSets(signal?, { refresh })`. `VersionService` validates and forwards the adapter's result. It does not synthesize a set from a catalog, infer compatibility ranges, or enumerate package releases. The tool name remains unchanged for existing clients.
-
-```json
-{ "library": "nextjs", "refresh": false }
-```
-
-The response includes `library`, `documentationSets`, and optional `catalog` provenance. Each documentation set has:
-
-| Field | Meaning |
-| --- | --- |
-| `id` | Stable selector for a documentation collection. The installed retrieval operations support `current`. |
-| `label` | Display label supplied by the adapter. |
-| `channel` | `current` identifies the mutable current collection. Historical routing is not implemented. |
-| `declaredVersion` | Source-declared metadata, or `null`. It does not select a package release, pin page content, or establish compatibility. |
-| `versionRange` | An independently verified compatibility range, or `null`. It is never inferred from `declaredVersion`. |
-| `sourceUrl` | The collection's documentation URL, supplied by the adapter. |
-
-Next.js returns one set with `id: "current"`, its configured documentation URL, catalog `docVersion` as `declaredVersion` when present, and `versionRange: null`. Its adapter reads the catalog through the existing cache and returns catalog provenance, including freshness metadata. `refresh: true` rechecks that source. Other adapters may discover sets without a catalog; their response omits `catalog` when it was not used. An empty available-set result is preserved.
-
-Discovery responses are validated before they reach the client. Malformed metadata, duplicate IDs, and sets that the installed retrieval operations cannot select return `SOURCE_ERROR`. Currently only `id: "current"` with `channel: "current"` is accepted. A change to the source-declared version updates metadata within that same set and cache/index scope. In `get_code_examples`, the existing `version` argument selects a documentation-set ID; package numbers and compatibility ranges return `VERSION_UNAVAILABLE`.
-
-## get_documentation
-
-Example tool arguments:
-
-```json
-{
-  "library": "nextjs",
-  "path": "app/getting-started/caching",
-  "section_id": "usage",
-  "max_chars": 12000
-}
-```
-
-| Parameter | Meaning |
-| --- | --- |
-| `library` | Required; an enabled identifier from `list_libraries`. The default configuration includes `nextjs` and `react`. |
-| `path` | Required; relative page path supported by the selected adapter. Next.js paths are relative to `/docs` without a `.md` suffix. |
-| `section_id` | Optional ID from the response's `sections` outline. Returns the section and all its subsections. The synthetic Introduction returns only its own preamble. |
-| `max_chars` | Markdown size limit, from 256 to 40,000; defaults to 12,000. Metadata and the section outline are additional. |
-| `offset` | Offset within the selected content; defaults to 0. Continue with the returned `pagination.nextOffset`. |
-| `expected_hash` | Previous `contentHash`; required for nonzero offsets. A source change returns `DOCUMENT_CHANGED` rather than mixing revisions. |
-| `refresh` | Optional boolean, defaults to `false`. Check the source now even if the saved copy is still within its TTL. |
-
-The response contains source metadata, document title and optional description/update date, `channel: "current"`, a SHA-256 `contentHash`, a compact document-wide section outline, selected Markdown in `content`, pagination information, and `cache` metadata. Omit `section_id` to read the whole source document, including frontmatter, and discover section IDs. Section IDs are internal selectors, not verified website anchors. Historical version arguments and other unknown parameters are rejected.
-
-If `pagination.truncated` is true, repeat the call with the same `library`, `path`, and `section_id`, set `offset` to `pagination.nextOffset`, and set `expected_hash` to `contentHash`. Concatenating the content pages reconstructs the selection. Offsets and limits use JavaScript string units; surrogate pairs are kept intact. A response can end inside a code fence, so reassemble content before treating examples as complete. Continuations normally reuse the disk entry while it is fresh. A refresh or expired TTL may replace it; the content hash still detects changes rather than mixing revisions. The cache stores the latest saved copy, not a history of snapshots.
-
-Operational failures return MCP `isError: true` with a JSON text block containing `code` and `message`. Codes include `SOURCE_ERROR`, `PARSE_ERROR`, `SECTION_NOT_FOUND`, `DOCUMENT_CHANGED`, and `INVALID_REQUEST`. SDK input-validation failures also return `isError: true`, with the SDK's validation message. The service honors request cancellation and the source adapter's timeout. The tool is read-only and accesses the network.
-
-After building, test the tool with the locally installed Inspector:
-
-```sh
-node_modules/.bin/mcp-inspector --cli node dist/main.js \
-  --method tools/call --tool-name get_documentation \
-  --tool-arg library=nextjs \
-  --tool-arg path=app/getting-started/caching \
-  --tool-arg section_id=usage
-```
-
-`get_server_info` reports `stage: "search"`. `McpModule` imports `DocumentationModule`, `SearchModule`, `LibrariesModule`, and `CodeExamplesModule`; their tools share the source adapter and existing cache. Startup does not fetch documentation, build an index, or create cache files. Automated tests exercise the cache, parser, search, code extraction, MCP SDK tool calls with mocked HTTP, and stdio discovery with both legacy and current protocol clients.
-
-## search_docs
-
-Example tool arguments:
-
-```json
-{
-  "library": "nextjs",
-  "query": "revalidateTag",
-  "path_prefix": "app/api-reference/functions",
-  "limit": 5
-}
-```
-
-| Parameter | Meaning |
-| --- | --- |
-| `library` | Required; an enabled identifier from `list_libraries`. |
-| `query` | Required lexical keywords, 1–256 characters. Use the documentation's language (usually English) and API names, e.g. `caching revalidation` or `unstable_cache`. Whitespace, punctuation-only queries, and queries containing only common stop words are rejected. |
-| `path_prefix` | Optional exact page or subtree within the selected library's documentation, without a trailing slash. `app/guides/data` selects that page and its descendants, but not `app/guides/database`. Adapter path rules apply. Restricts downloads as well as results. |
-| `limit` | 1–20 matching sections; defaults to 5. |
-| `refresh` | Defaults to `false`. Check the catalog and every page in the selected scope now, bypassing TTL. |
-
-The first search loads the catalog and downloads the pages in scope, using at most four concurrent page requests. Omitting `path_prefix` selects every page directly listed in the root catalog and can take longer than a client's default tool timeout. Start with a narrower prefix when appropriate, or configure a longer timeout in your MCP client. When a client requests MCP progress, the tool reports completed page attempts, including failures. Clients that support resetting timeouts on progress can enable that behavior. Request cancellation stops active fetches and prevents new page downloads; concurrent searches synchronize in order, and cancellation also works while waiting.
-
-The process keeps a separate inverted index of parsed sections and content hashes for each `(libraryId, documentationSetId)` pair. Every search loads its selected pages through the existing cache policy, so fresh saved pages require no HTTP. Content hashes determine which pages need parsing and reindexing. Changed pages replace their old section postings; pages removed from the catalog or failing to load/parse are excluded only within their own scope. Restarting rebuilds indexes from cached Markdown on demand. Derived indexes are not persisted separately. Disabling the disk cache makes each search download its scope again.
-
-Index synchronization is serialized within each scope. Different libraries can index concurrently, with up to four page downloads per active search; one busy library does not block another. Cancelling an active or queued request affects only that request, and the scope's queue remains usable afterward. Example extraction continues to use an index owned by each request.
-
-Ranking uses BM25 over weighted fields: section title (6), document title (3), ancestor headings (2), path and section body (1). The body includes code examples. Tokenization normalizes Unicode and case, preserves full API identifiers, and also indexes camelCase and snake_case parts. Matches use any query term, with a query-coverage multiplier favoring sections matching more terms. Common English query stop words are ignored. Scores are relative to the selected corpus and are not confidence probabilities; ties use path and source order. This is lexical search without stemming, semantic translation, or historical comparisons. An agent answering a Russian question should formulate technical search keywords in the source language.
-
-Each result includes `path`, the canonical `sourceUrl`, document and section titles, `sectionId`, `headingPath`, one-based inclusive line numbers for the section's own source range, a bounded Markdown snippet (up to 482 JavaScript string units including ellipses), `score`, `matchedTerms`, `contentHash`, `fetchedAt`, and cache metadata. Snippets are excerpts for discovery and can cut across code fences. No website anchors are synthesized from internal section IDs.
-
-Pass a result's `getDocumentation` object directly as the arguments to `get_documentation`. It contains `library`, `path`, `section_id`, and `expected_hash`. Retrieval includes the selected section's descendants; a changed document returns `DOCUMENT_CHANGED`, so search again before retrying. `totalMatches` counts matching sections before `limit` is applied; multiple results can belong to one page.
-
-Inspect `coverage` even when results are empty:
-
-- `scope: "root-catalog"`, `catalogUrl`, optional source-declared `docVersion`, and optional `pathPrefix` describe discovery scope. Nested indexes such as `/docs/pages/llms.txt` are not expanded; this is not full Next.js documentation coverage.
-- `catalogDocuments`, `selectedDocuments`, `indexedDocuments`, and `indexedSections` report how much was searched. A prefix with no catalog entries succeeds with zero selected documents.
-- `partial`, `failedDocuments`, and `failures` report unavailable or unparseable pages. Failure details include path and code, are sorted and capped at 20, and expose `failuresTruncated` when needed. Failed pages are retried on subsequent calls through the cache policy.
-- `staleDocuments`, `catalogCache`, and each result's `cache` expose saved copies whose source could not be checked. `partial` refers to failed indexing, independently of stale content.
-
-A catalog failure returns MCP `isError: true` with `SOURCE_ERROR`. If every selected page fails, the tool returns `INDEX_UNAVAILABLE`. Available pages remain searchable when only some pages fail. Input validation and cancellation follow the same conventions as `get_documentation`.
-
-After building, try a single-page search in Inspector:
-
-```sh
-node_modules/.bin/mcp-inspector --cli node dist/main.js \
-  --method tools/call --tool-name search_docs \
-  --tool-arg library=nextjs \
-  --tool-arg query=revalidation \
-  --tool-arg path_prefix=app/getting-started/caching
-```
-
-## get_code_examples
-
-Extract complete code blocks from current official documentation using lexical keywords in the code, section prose, headings, and page metadata. Code is returned from the source without generation or execution.
-
-```json
-{
-  "library": "nextjs",
-  "query": "revalidateTag",
-  "version": "current",
-  "filters": {
-    "languages": ["typescript", "tsx"],
-    "path_prefix": "app/api-reference/functions"
-  },
-  "limit": 5
-}
-```
-
-| Parameter | Meaning |
-| --- | --- |
-| `library` | Required; an enabled identifier from `list_libraries`. Discover capabilities there as well. |
-| `query` | Required lexical keywords, 1–256 characters; use documentation-language keywords and exact API names. |
-| `version` | Documentation-set ID from `list_versions`; defaults to `current`. Package release numbers and compatibility ranges are not selectors. Unavailable sets return `VERSION_UNAVAILABLE` before downloading sources. |
-| `filters.languages` | Optional nonempty list of up to 10 fence languages, matched case-insensitively. `js`/`javascript` and `ts`/`typescript` are aliases; `jsx` and `tsx` remain distinct. Untagged blocks are included only when no language filter is set. |
-| `filters.path_prefix` | Optional exact page or subtree within the selected library's documentation. Adapter path rules apply. Restricts downloads as well as results. |
-| `limit` | Number of code blocks to return, 1–20; defaults to 5. Filters apply before ranking and limiting. |
-| `refresh` | Defaults to `false`. Recheck the catalog and selected pages immediately. |
-
-The compact response has `libraryId`, `version`, `examples`, `totalMatches` before the limit, and `coverage`. Each example includes complete parsed `code`, optional fence `language`/`meta` (which may identify a filename), `sourceUrl`, `sectionTitle`, `fetchedAt`, optional cache metadata, and `getDocumentation`. Code is returned directly and only once per example; the response omits duplicate Markdown, source ranges, ranking scores, token lists, and repeated identifiers. Ranking still determines example order. `getDocumentation` is an optional next step when surrounding context is needed; its arguments retrieve the containing section with a hash check, detecting source changes between extraction and retrieval. Identical blocks at different source locations remain separate examples.
-
-Extraction considers fenced, tilde-fenced, and indented code blocks; empty blocks and inline code are excluded. Sibling code blocks do not become search context for one another. No matches is a successful response with an empty `examples` array. Blocks are returned whole; `limit` bounds their count, not their combined size.
-
-Like `search_docs`, discovery covers only pages directly listed in the root catalog. The first call loads all selected pages with at most four concurrent downloads; subsequent calls reuse the disk cache and rebuild a request-local example index. `coverage` reports indexed documents and examples, catalog-declared `docVersion` when present, stale sources, and partial source/parser failures. The catalog version is metadata from a mutable source, not an immutable revision or a verified compatibility range. If every selected page fails, the tool returns `INDEX_UNAVAILABLE`; catalog failures return `SOURCE_ERROR`. Requests support MCP progress notifications and cancellation.
-
-## Disk cache and update checks
-
-Pages and `llms.txt` catalogs share the cache policy:
-
-1. Load a validated saved record. A fresh entry is returned without HTTP.
-2. After its TTL, or with `refresh: true`, send `If-None-Match` when an ETag is saved; otherwise use `If-Modified-Since` when Last-Modified is available.
-3. HTTP 304 reuses the Markdown and original `fetchedAt`, updating the successful `checkedAt` time. HTTP 200 saves the downloaded content and new validators. Without validators, a normal GET checks for changes by content hash.
-4. Network failures, timeouts, HTTP 408/429, and HTTP 5xx can return a saved copy marked `stale`. Its successful `checkedAt` is not advanced. Cancellation, redirects, permanent HTTP failures, and invalid Markdown responses remain errors. HTTP 404/410 remove the saved entry.
-
-`cache.status` is one of:
-
-| Status | Meaning |
-| --- | --- |
-| `miss` | Downloaded without a usable saved entry. |
-| `hit` | Reused a saved copy within the configured TTL. |
-| `revalidated` | Source confirmed unchanged with 304, or a 200 response had the same content hash. |
-| `updated` | A 200 response replaced a saved copy with changed content. |
-| `stale` | Source could not be checked; saved content is returned with a warning. |
-| `disabled` | Caching is disabled, or the response specifies `Cache-Control: no-store`. |
-
-`cache.checkedAt` records the last successful source check, `cache.persisted` says whether the returned data and metadata were saved, and an optional `cache.warning` explains stale fallback or a disk write failure. A fresh `hit` means fresh under this application's TTL policy, not a source check on every call. A stale fallback may be older than the TTL; inspect its timestamp before relying on freshness. `fetchedAt` remains the last download time; it is separate from both `checkedAt` and the source-declared `lastUpdated`.
-
-| Environment variable | Default | Meaning |
+| Library | ID | Example document path |
 | --- | --- | --- |
-| `DOCUMENTATION_MCP_CACHE_DIR` | `~/.cache/documentation-mcp` | Storage directory; use an absolute path for consistent behavior across MCP clients. |
-| `DOCUMENTATION_MCP_CACHE_TTL_MS` | `3600000` | Nonnegative integer freshness interval in milliseconds. `0` checks the source on every call. |
-| `DOCUMENTATION_MCP_CACHE_ENABLED` | `true` | Set to `false` to disable disk reads and writes. |
+| Next.js | `nextjs` | `app/getting-started/caching` |
+| React | `react` | `reference/react/useState` |
 
-Set these variables in your MCP client's server `env` configuration or the shell that launches the process. `.env` files are not loaded automatically.
+Both libraries are enabled by default and support current documentation. Historical documentation and package-release selection are not available. `list_versions` lists documentation sets; the supported selector is `current`.
 
-Files live under `<cache-dir>/v2/<sha256-of-identity>.json`, where the identity is the JSON tuple `[libraryId, documentationSetId, requestUrl]`. Records include these three identity fields, `schemaVersion: 2`, Markdown, content hash, timestamps, and HTTP validators. Identical URLs in different libraries or documentation sets have independent content, TTL checks, validators, and stale fallbacks. HTTP requests still use the original URL.
+## Available tools
 
-Writes use a private temporary file followed by atomic rename. Invalid JSON, incompatible record versions, scope/URL mismatches, and hash mismatches are treated as cache misses. Disk failures are logged to stderr; a successful online response can still be returned with `persisted: false`. `no-store` and HTTP 404/410 remove only the matching scoped entry. This is an application-level freshness policy rather than a full HTTP caching implementation.
+| Tool | Purpose |
+| --- | --- |
+| `get_server_info` | Inspect the server. |
+| `list_libraries` | Discover enabled libraries and their supported tools. |
+| `list_versions` | List available documentation sets for a library. |
+| `search_docs` | Find relevant documentation sections. |
+| `get_documentation` | Read a page or a selected section. |
+| `get_code_examples` | Retrieve complete code examples from the documentation. |
 
-Legacy `<cache-dir>/v1/` files are preserved but never read or migrated. The first request in a new v2 scope downloads its sources again; stale fallback requires a saved v2 entry in that same scope.
-
-## Next.js catalog
-
-`NextjsAdapter.fetchCatalog(signal?, options?)` loads `https://nextjs.org/docs/llms.txt` through the cache. Pass `{ refresh: true }` as options to check the source immediately. Each catalog entry contains a `path` accepted by `fetchDocument`, a `title`, a canonical `sourceUrl`, and optional `description` and `section` fields. The catalog also records `libraryId`, its own `sourceUrl`, `fetchedAt`, `cache`, and `docVersion` when declared by the source index.
-
-The parser handles linked section headings and nested list entries, normalizes `.md` URLs, trailing slashes, and fragments, and keeps the first entry for each unique document path. API path case and underscores are preserved, including names such as `cacheLife` and `unstable_cache`. External links, URLs outside `/docs/`, query URLs, unsupported paths, and fenced code examples are excluded. A catalog without usable document entries raises an error. `docVersion` is metadata reported by a mutable index; it does not pin subsequent page requests to that version.
-
-After building, let Nest resolve the adapter and its cache dependencies:
-
-```js
-import "reflect-metadata";
-import { LibraryRegistry } from "./dist/modules/libraries/library-registry.service.js";
-import { LibrariesModule } from "./dist/modules/libraries/libraries.module.js";
-import { NestFactory } from "@nestjs/core";
-
-const app = await NestFactory.createApplicationContext(LibrariesModule, { logger: false });
-try {
-  const registration = app.get(LibraryRegistry).get("nextjs");
-  if (!registration) throw new Error("Next.js is not enabled");
-  const adapter = registration.adapter;
-  const catalog = await adapter.fetchCatalog();
-  const page = catalog.documents.find((entry) => entry.path === "app/getting-started/caching");
-
-  if (page) {
-    const document = await adapter.fetchDocument(page.path);
-    console.log(document.content);
-  }
-} finally {
-  await app.close();
-}
-```
-
-Fetching the catalog does not download document contents. `fetchDocument(path, signal?, options?)` also accepts `{ refresh: true }` as its third argument. Source adapters perform network requests only when called, so application startup remains local.
-
-Discovery currently covers pages directly listed by the root index. Links to sub-indexes such as `/docs/pages/llms.txt` are excluded from document entries; recursive catalog discovery is a separate follow-up.
-
-## React catalog and extension contract
-
-`ReactAdapter` reads the official [React catalog](https://react.dev/llms.txt) and loads pages through their `.md` endpoints, such as [useState Markdown](https://react.dev/reference/react/useState.md). Supported paths start with `learn` or `reference`, use the original API-name case, and omit `.md`. `get_documentation` returns canonical `react.dev` page URLs. Blog URLs, version archives, external sites, query URLs, and nested catalogs are excluded from discovery.
-
-All four library operations are supported for React: document retrieval, section search, extracted code examples, and documentation-set discovery. Its available set is `current`; absent source version metadata produces `declaredVersion: null`, and no compatibility range or historical support is inferred. React Markdown contains JSX/MDX-looking tags and heading annotations. The shared CommonMark parser preserves that markup without evaluating it; returned section IDs remain internal selectors.
-
-For a narrow React search or example request:
+For example, `search_docs` can target a single React page:
 
 ```json
 {
   "library": "react",
   "query": "useState",
-  "path_prefix": "reference/react/useState"
+  "path_prefix": "reference/react/useState",
+  "limit": 5
 }
 ```
 
-Use `filters.path_prefix` instead of `path_prefix` with `get_code_examples`. Direct retrieval uses `path: "reference/react/useState"`.
+Search results and code examples include `getDocumentation` arguments for retrieving their surrounding context. Use English keywords and API names for best results. Search covers pages directly listed in each library's root catalog; check the response's `coverage` for partial results.
 
-To add another library:
+## Settings
 
-1. Implement the supported `ISourceAdapter` operations. A source with a link-list catalog, extensionless canonical URLs, and `.md` bodies can extend `LlmsMarkdownAdapter`; its concrete Nest provider supplies dependencies and `isValidPath`. Other sources can implement the interface directly.
-2. Add one keyed entry to `LIBRARY_DEFINITIONS` with metadata, source settings, and the adapter class. Common services and MCP tools select it through the registry.
-3. Add local source fixtures and exercise every advertised operation through MCP, including retrieval arguments, source failures, and the disabled-library case.
+Documentation is fetched on demand and cached locally. The default cache directory is `~/.cache/documentation-mcp`, with a one-hour freshness interval. Tools accept `refresh: true` to check the source immediately. If the source is temporarily unavailable, a saved copy may be returned with stale metadata.
 
-`configured-libraries.integration.spec.mjs` runs both actual configured adapters through the same services and MCP tools. It verifies discovery without HTTP at startup, current-set metadata, search and code extraction, hash-checked retrieval, independent cache/index state during React updates and removal, and disabling React while Next.js continues to work. The generic source, cache, and search contract suites cover identical paths/URLs, cancellation, and shared adapter classes as well.
+Optional environment variables can be set in your MCP server entry's `env` object:
 
-## Markdown document parsing
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `DOCUMENTATION_MCP_CACHE_DIR` | `~/.cache/documentation-mcp` | Change the cache location; use an absolute path. |
+| `DOCUMENTATION_MCP_CACHE_TTL_MS` | `3600000` | Change the freshness interval in milliseconds. |
+| `DOCUMENTATION_MCP_CACHE_ENABLED` | `true` | Set to `false` to disable disk caching. |
 
-`MarkdownDocumentParser.parse(source)` accepts an `ISourceDocument` and returns an `IParsedDocument`. The original Markdown and source metadata are preserved. Parsing is local and performs no network requests.
+To disable a library, set `enabled: false` in [library-definitions.constant.ts](src/modules/libraries/constants/library-definitions.constant.ts), rebuild, and restart the MCP server. It will disappear from discovery and become unavailable to tools.
 
-Given a source document returned by the adapter:
+## Development and contributions
 
-```js
-import { MarkdownDocumentParser } from "./dist/modules/documentation/parsers/markdown-document.parser.js";
+Contributions and additional library adapters are welcome.
 
-const document = new MarkdownDocumentParser().parse(source);
-const examples = document.sections.flatMap((section) => section.codeExamples);
+```sh
+npm run dev        # Run with automatic restart
+npm run typecheck  # Check TypeScript types
+npm test          # Build and run tests
+npm run inspector # Build and open MCP Inspector
 ```
 
-- Metadata: YAML `title`, `description`, and `lastUpdated` are extracted and validated. The title falls back to the first H1, then the first heading, then the source path. Invalid YAML or invalid known metadata fields raise an error; source URLs are taken from the adapter, not from frontmatter.
-- Sections: top-level Markdown headings form a flat list in source order. Each section contains its heading and the content up to the next heading. `parentId` and `headingPath` preserve nesting without repeating child content inside parents. Content before the first heading becomes an `Introduction` section with depth 0. YAML frontmatter is excluded from sections.
-- IDs: section IDs and code IDs are document-local and deterministic for unchanged content. Section IDs use unique heading slugs; they are internal selectors, not verified website anchors.
-- Code: fenced, tilde-fenced, and indented blocks, including blocks inside lists or quotations, are attached to their containing section. Each example records parsed `code`, optional `language` and original fence `meta`, plus a verbatim `markdown` excerpt. Parsed code follows CommonMark normalization; the excerpt retains original source characters and line endings.
-- Ranges: sections and examples include one-based inclusive `startLine`/`endLine` and JavaScript string `startOffset`/`endOffset` (end exclusive). Their source excerpts can be recovered by slicing the original document with these offsets.
+To add a library, implement [ISourceAdapter](src/modules/sources/interfaces/source-adapter.interface.ts), register it in [LIBRARY_DEFINITIONS](src/modules/libraries/constants/library-definitions.constant.ts), and add fixtures and contract tests for its supported tools. Sources with an `llms.txt` catalog and `.md` pages can extend [LlmsMarkdownAdapter](src/modules/sources/adapters/llms-markdown.adapter.ts); [ReactAdapter](src/modules/sources/adapters/react.adapter.ts) is a small example.
 
-The parser uses remark for CommonMark structure, remark-frontmatter and YAML for metadata, and github-slugger for section IDs. HTML and MDX-looking markup are retained as source data; components and code examples are not evaluated. A dedicated MDX grammar is outside this parser's current scope.
-
-Runtime dependencies include Nest.js, MCP Server SDK, Zod, reflect-metadata, RxJS, and the Markdown parsing libraries. TypeScript, tsx, Vitest, Node.js and Markdown AST types, MCP Client SDK, and MCP Inspector are development dependencies. Exact versions are recorded in `package.json` and `package-lock.json`.
-
-The npm package is private while the initial implementation and release setup are being prepared.
+Shared services and MCP tools select adapters through the registry. [Configured-library tests](src/modules/mcp/tests/configured-libraries.integration.spec.mjs) cover both built-in adapters, cache and search isolation, and library disabling. Tests use mocked HTTP responses and temporary cache directories.

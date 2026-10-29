@@ -9,6 +9,7 @@ import {
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import {
+  describe,
   afterEach,
   beforeEach,
   expect,
@@ -20,211 +21,221 @@ import { FileCacheService } from "../../../../dist/modules/cache/file-cache.serv
 import { contentHash } from "../../../../dist/modules/cache/utils/content-hash.util.js";
 import { readCacheOptions } from "../../../../dist/modules/cache/utils/read-cache-options.util.js";
 
-beforeEach(() => vi.spyOn(console, "error").mockImplementation(() => {}));
-afterEach(() => {
-  vi.restoreAllMocks();
-  vi.unstubAllEnvs();
-});
-
-async function setup() {
-  const directory = await mkdtemp(join(tmpdir(), "documentation-mcp-store-"));
-
-  onTestFinished(() => rm(directory, { recursive: true, force: true }));
-
-  const options = { directory, ttlMs: 3_600_000, enabled: true };
-  const url = "https://nextjs.org/docs/app/guides/example.md";
-  const entry = {
-    schemaVersion: 2,
-    libraryId: "nextjs",
-    documentationSetId: "current",
-    url,
-    content: "# Example\n\nBody.",
-    contentHash: contentHash("# Example\n\nBody."),
-    fetchedAt: "2026-10-26T10:00:00.000Z",
-    checkedAt: "2026-10-26T10:00:00.000Z",
-    etag: '"v1"',
-    lastModified: "Mon, 26 Oct 2026 10:00:00 GMT",
-  };
-  const identity = JSON.stringify([
-    entry.libraryId,
-    entry.documentationSetId,
-    url,
-  ]);
-
-  return {
-    store: new FileCacheService(options),
-    options,
-    entry,
-    directory,
-    file: join(directory, "v2", `${contentHash(identity)}.json`),
-  };
-}
-
-test("persists scoped content and validators across store instances", async () => {
-  const { store, options, entry, directory, file } = await setup();
-
-  expect(await store.write(entry)).toBe(true);
-  expect(await new FileCacheService(options).read(entry)).toEqual(entry);
-  expect(await readdir(join(directory, "v2"))).toEqual([basename(file)]);
-});
-
-test.each([
-  "invalid-json",
-  "wrong-hash",
-  "wrong-url",
-  "wrong-library",
-  "wrong-set",
-  "old-schema",
-  "future-schema",
-])("ignores corrupt or incompatible cache records: %s", async (kind) => {
-  const { store, entry, file } = await setup();
-  await store.write(entry);
-  const invalid = { ...entry };
-
-  if (kind === "wrong-hash") {
-    invalid.content += "Tampered";
-  }
-
-  if (kind === "wrong-url") {
-    invalid.url = "https://example.com/other";
-  }
-
-  if (kind === "wrong-library") {
-    invalid.libraryId = "other";
-  }
-
-  if (kind === "wrong-set") {
-    invalid.documentationSetId = "release-1";
-  }
-
-  if (kind === "old-schema") {
-    invalid.schemaVersion = 1;
-  }
-
-  if (kind === "future-schema") {
-    invalid.schemaVersion = 3;
-  }
-
-  await writeFile(
-    file,
-    kind === "invalid-json" ? "{partial" : JSON.stringify(invalid),
-  );
-
-  expect(await store.read(entry)).toBeNull();
-  expect(console.error).toHaveBeenCalled();
-  expect(await store.write(entry)).toBe(true);
-  expect(await store.read(entry)).toEqual(entry);
-});
-
-test("concurrent writes leave one complete record and no temporary files", async () => {
-  const { store, entry, directory } = await setup();
-  const entries = Array.from({ length: 8 }, (_, index) => {
-    const content = `# Version ${index}\n${"Text".repeat(100)}`;
-    return { ...entry, content, contentHash: contentHash(content) };
+describe("FileCacheService", () => {
+  beforeEach(() => vi.spyOn(console, "error").mockImplementation(() => {}));
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
   });
 
-  expect(
-    await Promise.all(entries.map((candidate) => store.write(candidate))),
-  ).toEqual(Array(8).fill(true));
-  expect(entries).toContainEqual(await store.read(entry));
-  expect(await readdir(join(directory, "v2"))).toHaveLength(1);
-});
+  async function setup() {
+    const directory = await mkdtemp(join(tmpdir(), "documentation-mcp-store-"));
 
-test("handles missing entries and an unusable directory without breaking callers", async () => {
-  const { store, entry, directory } = await setup();
+    onTestFinished(() => rm(directory, { recursive: true, force: true }));
 
-  expect(await store.read(entry)).toBeNull();
-
-  const blocked = join(directory, "blocked");
-  await writeFile(blocked, "This is a file");
-
-  const broken = new FileCacheService({
-    directory: blocked,
-    ttlMs: 1000,
-    enabled: true,
-  });
-
-  expect(await broken.write(entry)).toBe(false);
-  expect(await broken.read(entry)).toBeNull();
-  expect(await readFile(blocked, "utf8")).toBe("This is a file");
-});
-
-test("disabled caching does not create files", async () => {
-  const { options, entry, directory } = await setup();
-  const store = new FileCacheService({ ...options, enabled: false });
-
-  expect(await store.write(entry)).toBe(false);
-  expect(await store.read(entry)).toBeNull();
-  expect(await readdir(directory)).toEqual([]);
-});
-
-test("the same URL persists independently across libraries and documentation sets", async () => {
-  const { store, options, entry, directory } = await setup();
-
-  const entries = [
-    entry,
-    { ...entry, libraryId: "other" },
-    { ...entry, documentationSetId: "release-1" },
-  ].map((candidate, index) => {
-    const content = `# Scoped document ${index}`;
+    const options = { directory, ttlMs: 3_600_000, enabled: true };
+    const url = "https://nextjs.org/docs/app/guides/example.md";
+    const entry = {
+      schemaVersion: 2,
+      libraryId: "nextjs",
+      documentationSetId: "current",
+      url,
+      content: "# Example\n\nBody.",
+      contentHash: contentHash("# Example\n\nBody."),
+      fetchedAt: "2026-10-26T10:00:00.000Z",
+      checkedAt: "2026-10-26T10:00:00.000Z",
+      etag: '"v1"',
+      lastModified: "Mon, 26 Oct 2026 10:00:00 GMT",
+    };
+    const identity = JSON.stringify([
+      entry.libraryId,
+      entry.documentationSetId,
+      url,
+    ]);
 
     return {
-      ...candidate,
-      content,
-      contentHash: contentHash(content),
-      etag: `"scope-${index}"`,
+      store: new FileCacheService(options),
+      options,
+      entry,
+      directory,
+      file: join(directory, "v2", `${contentHash(identity)}.json`),
     };
-  });
-
-  expect(
-    await Promise.all(entries.map((candidate) => store.write(candidate))),
-  ).toEqual([true, true, true]);
-
-  const restarted = new FileCacheService(options);
-
-  for (const candidate of entries) {
-    expect(await restarted.read(candidate)).toEqual(candidate);
   }
 
-  expect(await readdir(join(directory, "v2"))).toHaveLength(3);
+  describe("persistence and recovery", () => {
+    test("persists scoped content and validators across store instances", async () => {
+      const { store, options, entry, directory, file } = await setup();
 
-  await restarted.remove(entry);
+      expect(await store.write(entry)).toBe(true);
+      expect(await new FileCacheService(options).read(entry)).toEqual(entry);
+      expect(await readdir(join(directory, "v2"))).toEqual([basename(file)]);
+    });
 
-  expect(await store.read(entry)).toBeNull();
-  expect(await store.read(entries[1])).toEqual(entries[1]);
-  expect(await store.read(entries[2])).toEqual(entries[2]);
-});
+    test.each([
+      "invalid-json",
+      "wrong-hash",
+      "wrong-url",
+      "wrong-library",
+      "wrong-set",
+      "old-schema",
+      "future-schema",
+    ])("ignores corrupt or incompatible cache records: %s", async (kind) => {
+      const { store, entry, file } = await setup();
+      await store.write(entry);
+      const invalid = { ...entry };
 
-test("legacy v1 entries are left intact and never reused by the v2 cache", async () => {
-  const { store, entry, directory } = await setup();
-  const legacyFile = join(directory, "v1", `${contentHash(entry.url)}.json`);
-  const { libraryId, documentationSetId, ...legacy } = entry;
+      if (kind === "wrong-hash") {
+        invalid.content += "Tampered";
+      }
 
-  legacy.schemaVersion = 1;
+      if (kind === "wrong-url") {
+        invalid.url = "https://example.com/other";
+      }
 
-  await mkdir(join(directory, "v1"));
-  await writeFile(legacyFile, JSON.stringify(legacy));
+      if (kind === "wrong-library") {
+        invalid.libraryId = "other";
+      }
 
-  expect(await store.read(entry)).toBeNull();
-  expect(await store.write(entry)).toBe(true);
-  expect(await store.read(entry)).toEqual(entry);
-  expect(JSON.parse(await readFile(legacyFile, "utf8"))).toEqual(legacy);
-});
+      if (kind === "wrong-set") {
+        invalid.documentationSetId = "release-1";
+      }
 
-test("reads explicit environment settings", () => {
-  vi.stubEnv("DOCUMENTATION_MCP_CACHE_DIR", "/tmp/custom-documentation-cache");
-  vi.stubEnv("DOCUMENTATION_MCP_CACHE_TTL_MS", "5000");
-  vi.stubEnv("DOCUMENTATION_MCP_CACHE_ENABLED", "false");
+      if (kind === "old-schema") {
+        invalid.schemaVersion = 1;
+      }
 
-  expect(readCacheOptions()).toEqual({
-    directory: "/tmp/custom-documentation-cache",
-    ttlMs: 5000,
-    enabled: false,
+      if (kind === "future-schema") {
+        invalid.schemaVersion = 3;
+      }
+
+      await writeFile(
+        file,
+        kind === "invalid-json" ? "{partial" : JSON.stringify(invalid),
+      );
+
+      expect(await store.read(entry)).toBeNull();
+      expect(console.error).toHaveBeenCalled();
+      expect(await store.write(entry)).toBe(true);
+      expect(await store.read(entry)).toEqual(entry);
+    });
+
+    test("concurrent writes leave one complete record and no temporary files", async () => {
+      const { store, entry, directory } = await setup();
+      const entries = Array.from({ length: 8 }, (_, index) => {
+        const content = `# Version ${index}\n${"Text".repeat(100)}`;
+        return { ...entry, content, contentHash: contentHash(content) };
+      });
+
+      expect(
+        await Promise.all(entries.map((candidate) => store.write(candidate))),
+      ).toEqual(Array(8).fill(true));
+      expect(entries).toContainEqual(await store.read(entry));
+      expect(await readdir(join(directory, "v2"))).toHaveLength(1);
+    });
+
+    test("handles missing entries and an unusable directory without breaking callers", async () => {
+      const { store, entry, directory } = await setup();
+
+      expect(await store.read(entry)).toBeNull();
+
+      const blocked = join(directory, "blocked");
+      await writeFile(blocked, "This is a file");
+
+      const broken = new FileCacheService({
+        directory: blocked,
+        ttlMs: 1000,
+        enabled: true,
+      });
+
+      expect(await broken.write(entry)).toBe(false);
+      expect(await broken.read(entry)).toBeNull();
+      expect(await readFile(blocked, "utf8")).toBe("This is a file");
+    });
+
+    test("disabled caching does not create files", async () => {
+      const { options, entry, directory } = await setup();
+      const store = new FileCacheService({ ...options, enabled: false });
+
+      expect(await store.write(entry)).toBe(false);
+      expect(await store.read(entry)).toBeNull();
+      expect(await readdir(directory)).toEqual([]);
+    });
   });
-});
 
-test.each([-1, 1.5, NaN, Infinity])("rejects invalid TTL %s", (ttlMs) => {
-  expect(
-    () => new FileCacheService({ directory: tmpdir(), ttlMs, enabled: true }),
-  ).toThrow("Invalid cache configuration");
+  describe("cache isolation and schema versions", () => {
+    test("the same URL persists independently across libraries and documentation sets", async () => {
+      const { store, options, entry, directory } = await setup();
+
+      const entries = [
+        entry,
+        { ...entry, libraryId: "other" },
+        { ...entry, documentationSetId: "release-1" },
+      ].map((candidate, index) => {
+        const content = `# Scoped document ${index}`;
+
+        return {
+          ...candidate,
+          content,
+          contentHash: contentHash(content),
+          etag: `"scope-${index}"`,
+        };
+      });
+
+      expect(
+        await Promise.all(entries.map((candidate) => store.write(candidate))),
+      ).toEqual([true, true, true]);
+
+      const restarted = new FileCacheService(options);
+
+      for (const candidate of entries) {
+        expect(await restarted.read(candidate)).toEqual(candidate);
+      }
+
+      expect(await readdir(join(directory, "v2"))).toHaveLength(3);
+
+      await restarted.remove(entry);
+
+      expect(await store.read(entry)).toBeNull();
+      expect(await store.read(entries[1])).toEqual(entries[1]);
+      expect(await store.read(entries[2])).toEqual(entries[2]);
+    });
+
+    test("legacy v1 entries are left intact and never reused by the v2 cache", async () => {
+      const { store, entry, directory } = await setup();
+      const legacyFile = join(directory, "v1", `${contentHash(entry.url)}.json`);
+      const { libraryId, documentationSetId, ...legacy } = entry;
+
+      legacy.schemaVersion = 1;
+
+      await mkdir(join(directory, "v1"));
+      await writeFile(legacyFile, JSON.stringify(legacy));
+
+      expect(await store.read(entry)).toBeNull();
+      expect(await store.write(entry)).toBe(true);
+      expect(await store.read(entry)).toEqual(entry);
+      expect(JSON.parse(await readFile(legacyFile, "utf8"))).toEqual(legacy);
+    });
+  });
+
+  describe("readCacheOptions", () => {
+    test("reads explicit environment settings", () => {
+      vi.stubEnv("DOCUMENTATION_MCP_CACHE_DIR", "/tmp/custom-documentation-cache");
+      vi.stubEnv("DOCUMENTATION_MCP_CACHE_TTL_MS", "5000");
+      vi.stubEnv("DOCUMENTATION_MCP_CACHE_ENABLED", "false");
+
+      expect(readCacheOptions()).toEqual({
+        directory: "/tmp/custom-documentation-cache",
+        ttlMs: 5000,
+        enabled: false,
+      });
+    });
+  });
+
+  describe("constructor validation", () => {
+    test.each([-1, 1.5, NaN, Infinity])("rejects invalid TTL %s", (ttlMs) => {
+      expect(
+        () => new FileCacheService({ directory: tmpdir(), ttlMs, enabled: true }),
+      ).toThrow("Invalid cache configuration");
+    });
 });
+  });

@@ -12,18 +12,27 @@ export function createLibraryRegistration(
   adapter: ISourceAdapter,
   pipelines: DocumentPipelineRegistry,
 ): ILibraryRegistration {
-  // TODO: improve readability
-  if (
-    [
-      adapter.isValidPath,
-      adapter.fetchCatalog,
-      adapter.fetchDocument,
-      adapter.listDocumentationSets,
-    ].some((method) => method !== undefined && typeof method !== "function") ||
-    (adapter.documentFormat !== undefined &&
-      (typeof adapter.documentFormat !== "string" ||
-        !adapter.documentFormat.trim()))
-  ) {
+  const methods = [
+    adapter.isValidPath,
+    adapter.fetchCatalog,
+    adapter.fetchDocument,
+    adapter.listDocumentationSets,
+  ];
+
+  const hasInvalidMethod = methods.some(
+    (method) => method !== undefined && typeof method !== "function",
+  );
+
+  if (hasInvalidMethod) {
+    throw new Error(`Invalid source adapter: ${id}`);
+  }
+
+  const hasValidDocumentFormat =
+    adapter.documentFormat === undefined ||
+    (typeof adapter.documentFormat === "string" &&
+      Boolean(adapter.documentFormat.trim()));
+
+  if (!hasValidDocumentFormat) {
     throw new Error(`Invalid source adapter: ${id}`);
   }
 

@@ -6,3 +6,5 @@ export const LIBRARY_TOOL_NAMES = [
   "list_versions",
   "get_code_examples",
 ] as const;
+
+export const MAX_LIBRARY_ID_LENGTH = 100;

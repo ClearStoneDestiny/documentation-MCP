@@ -10,20 +10,24 @@ export class DocumentPipelineRegistry {
     @Inject(DOCUMENT_PIPELINES) pipelines: readonly IDocumentPipeline[],
   ) {
     for (const pipeline of pipelines) {
-      // TODO: improve readability
+      const hasValidFormat =
+        typeof pipeline.format === "string" && Boolean(pipeline.format.trim());
+      const hasValidParser = typeof pipeline.parse === "function";
+      const hasValidIndexFactory =
+        pipeline.createIndex === undefined ||
+        typeof pipeline.createIndex === "function";
+
       if (
-        typeof pipeline.format !== "string" ||
-        !pipeline.format.trim() ||
-        typeof pipeline.parse !== "function" ||
-        (pipeline.createIndex !== undefined &&
-          typeof pipeline.createIndex !== "function") ||
+        !hasValidFormat ||
+        !hasValidParser ||
+        !hasValidIndexFactory ||
         this.pipelines.has(pipeline.format)
       ) {
         throw new Error(
           `Invalid or duplicate document pipeline: ${pipeline.format}`,
         );
       }
-      
+
       this.pipelines.set(pipeline.format, Object.freeze({ ...pipeline }));
     }
   }
